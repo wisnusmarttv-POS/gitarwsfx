@@ -1,16 +1,19 @@
 import Knob from './Knob.jsx';
 import { AMP_MODELS, AMP_CHANNELS } from '../audio/ampModels.js';
 
-export default function AmpPanel({ currentModel, params, channel, onModelChange, onParamChange, onChannelChange }) {
+export default function AmpPanel({ currentModel, params, channel, onModelChange, onParamChange, onChannelChange, compact = false }) {
     const model = AMP_MODELS.find(m => m.id === currentModel) || AMP_MODELS[0];
 
     return (
-        <div className="amp-panel">
+        <div className={`amp-panel ${compact ? 'compact' : ''}`}>
             <div className="amp-header">
-                <div className="amp-logo">
-                    <span className="amp-icon">{model.icon}</span>
-                    <h3>AMP HEAD</h3>
-                </div>
+                {!compact && (
+                    <div className="amp-logo">
+                        <span className="amp-icon">{model.icon}</span>
+                        <h3>AMP HEAD</h3>
+                    </div>
+                )}
+                {compact && <div className="amp-compact-label">AMP</div>}
                 <select
                     className="amp-selector"
                     value={currentModel}
@@ -22,7 +25,7 @@ export default function AmpPanel({ currentModel, params, channel, onModelChange,
                 </select>
             </div>
 
-            <div className="amp-description">{model.description}</div>
+            {!compact && <div className="amp-description">{model.description}</div>}
 
             <div className="amp-channels">
                 {AMP_CHANNELS.map(ch => (
@@ -47,13 +50,13 @@ export default function AmpPanel({ currentModel, params, channel, onModelChange,
                         max={param.max}
                         label={param.label}
                         color="#ffcc00"
-                        size={56}
+                        size={compact ? 40 : 56}
                         onChange={(val) => onParamChange(key, val)}
                     />
                 ))}
             </div>
 
-            <div className="amp-badge">{model.name}</div>
+            {!compact && <div className="amp-badge">{model.name}</div>}
         </div>
     );
 }

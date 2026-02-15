@@ -87,9 +87,9 @@ export function importPreset(file) {
 }
 
 // Serialize current app state into a preset object
-export function createPresetSnapshot(name, description, effects, amp, cabinet) {
+export function createPresetSnapshot(name, description, effects, amp, cabinet, id = null) {
     return {
-        id: `user_${Date.now()}`,
+        id: id || `user_${Date.now()}`,
         name,
         description: description || '',
         amp: {
@@ -106,6 +106,7 @@ export function createPresetSnapshot(name, description, effects, amp, cabinet) {
         effects: effects.map(e => ({
             type: e.typeId,
             enabled: e.enabled,
+            color: e.effect.color, // Save custom color
             params: Object.fromEntries(
                 Object.entries(e.effect.params).map(([k, v]) => [k, v.value])
             )

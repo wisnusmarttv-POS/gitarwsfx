@@ -5,8 +5,11 @@ import ExpressionPedal from './components/ExpressionPedal.jsx';
 import AmpPanel from './components/AmpPanel.jsx';
 import CabinetPanel from './components/CabinetPanel.jsx';
 import EffectPedal from './components/EffectPedal.jsx';
+import SignalChain from './components/SignalChain.jsx';
 import Knob from './components/Knob.jsx';
 import VUMeter from './components/VUMeter.jsx';
+import PatchList from './components/PatchList.jsx';
+import Tuner from './components/Tuner.jsx';
 import { initAudioEngine, connectInput, disconnectInput, buildSignalChain, setMasterVolume, setGlobalBypass, getInputAnalyser, getOutputAnalyser } from './audio/audioEngine.js';
 import { EFFECT_TYPES } from './audio/effects.js';
 import { createAmp, AMP_MODELS } from './audio/ampModels.js';
@@ -18,6 +21,7 @@ const BANK_SIZE = 4;
 
 function App() {
   const [isConnected, setIsConnected] = useState(false);
+  const [showTuner, setShowTuner] = useState(false);
   const [masterVol, setMasterVol] = useState(80);
   const [bypass, setBypass] = useState(false);
   const [presets, setPresets] = useState([]);
@@ -28,6 +32,10 @@ function App() {
 
   // Selection state for Multi-FX UI
   const [selectedBlockId, setSelectedBlockId] = useState('amp');
+
+  const handleBlockSelect = useCallback((id) => {
+    setSelectedBlockId(prev => (prev === id ? null : id));
+  }, []);
 
   // Effects state
   const [effects, setEffects] = useState([]);
@@ -107,6 +115,18 @@ function App() {
     }));
   }, []);
 
+  const handleColorChange = useCallback((id, color) => {
+    setEffects(prev => prev.map(fx => {
+      if (fx.id === id) {
+        // Update the effect object itself if necessary for persistence/engine
+        if (fx.effect) fx.effect.color = color;
+        // Search in params if color is stored there? No, usually top level on effect object.
+        return { ...fx, effect: { ...fx.effect, color } };
+      }
+      return fx;
+    }));
+  }, []);
+
   const handleAmpModelChange = useCallback((modelId) => {
     const model = AMP_MODELS.find(m => m.id === modelId);
     if (!model) return;
@@ -181,12 +201,52 @@ function App() {
           if (idx >= 0) {
             newEffects[idx].enabled = pe.enabled;
             if (pe.params) newEffects[idx].effect.update(pe.params);
+            if (pe.color) newEffects[idx].effect.color = pe.color; // Load color from preset
           }
         });
         return newEffects;
       });
     }
   }, [presets]);
+
+  const handleSaveNewPreset = useCallback((name) => {
+    const snapshot = createPresetSnapshot(
+      name,
+      '',
+      effects,
+      { modelId: ampModelId, params: ampRef.current.params },
+      { cabinetId: cabType, micPosition: micPos, params: { mix: { value: cabMix } } }
+    );
+    const saved = savePreset(snapshot);
+    setPresets(getAllPresets());
+    setCurrentPresetId(saved.id);
+  }, [effects, ampModelId, cabType, micPos, cabMix]);
+
+  const handleDeletePreset = useCallback((id) => {
+    deletePreset(id);
+    setPresets(getAllPresets());
+    if (currentPresetId === id) {
+      setCurrentPresetId(null);
+    }
+  }, [currentPresetId]);
+
+  const handleOverwritePreset = useCallback(() => {
+    const currentPreset = presets.find(p => p.id === currentPresetId);
+    if (!currentPreset || currentPreset.isFactory) return;
+
+    if (window.confirm(`Overwrite preset "${currentPreset.name}" with current settings?`)) {
+      const snapshot = createPresetSnapshot(
+        currentPreset.name,
+        currentPreset.description,
+        effects,
+        { modelId: ampModelId, params: ampRef.current.params },
+        { cabinetId: cabType, micPosition: micPos, params: { mix: { value: cabMix } } },
+        currentPresetId // Pass existing ID to overwrite
+      );
+      savePreset(snapshot);
+      setPresets(getAllPresets());
+    }
+  }, [currentPresetId, presets, effects, ampModelId, cabType, micPos, cabMix]);
 
   // Footswitches Handlers
   const handlePrevBank = useCallback(() => {
@@ -214,73 +274,227 @@ function App() {
     return index % BANK_SIZE;
   };
 
-  const activePresetIndex = getActivePresetIndexInBank();
+  // Drag and Drop State
+  const [draggedEffectId, setDraggedEffectId] = useState(null);
+
+  const handleDragStart = useCallback((e, id) => {
+    setDraggedEffectId(id);
+    e.dataTransfer.effectAllowed = 'move';
+    // Transparent drag image or default? Default is fine for now, or we can set a ghost image.
+  }, []);
+
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault(); // Necessary to allow dropping
+    e.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const handleDrop = useCallback((e, targetId) => {
+    e.preventDefault();
+    if (!draggedEffectId || draggedEffectId === targetId) return;
+
+    setEffects(prev => {
+      const newEffects = [...prev];
+      const draggedIndex = newEffects.findIndex(fx => fx.id === draggedEffectId);
+      const targetIndex = newEffects.findIndex(fx => fx.id === targetId);
+
+      if (draggedIndex < 0 || targetIndex < 0) return prev;
+
+      // Move the item
+      const [removed] = newEffects.splice(draggedIndex, 1);
+      newEffects.splice(targetIndex, 0, removed);
+
+      return newEffects;
+    });
+    setDraggedEffectId(null);
+  }, [draggedEffectId]);
+
+  const handleDragEnd = useCallback(() => {
+    setDraggedEffectId(null);
+  }, []);
 
   // Render
   const renderEditArea = () => {
-    if (selectedBlockId === 'amp') return <AmpPanel currentModel={ampModelId} params={ampParams} channel={ampChannel} onModelChange={handleAmpModelChange} onParamChange={handleAmpParamChange} onChannelChange={handleChannelChange} />;
+    // If Amp is explicitly selected, show full Amp panel
+    if (selectedBlockId === 'amp') {
+      return (
+        <AmpPanel
+          currentModel={ampModelId}
+          params={ampParams}
+          channel={ampChannel}
+          onModelChange={handleAmpModelChange}
+          onParamChange={handleAmpParamChange}
+          onChannelChange={handleChannelChange}
+        />
+      );
+    }
+
     if (selectedBlockId === 'cab') return <CabinetPanel cabinetType={cabType} micPosition={micPos} mix={cabMix} onCabinetChange={handleCabChange} onMicChange={handleMicChange} onMixChange={handleCabMixChange} />;
     if (selectedBlockId === 'input') return <div style={{ color: 'white', textAlign: 'center' }}><h3>INPUT / GATE</h3><p>Global Input Settings</p></div>;
     if (selectedBlockId === 'output') return <div style={{ color: 'white', textAlign: 'center' }}><h3>MASTER OUTPUT</h3><VUMeter analyser={getOutputAnalyser()} label="OUT" color="#4488ff" /></div>;
 
     const effect = effects.find(fx => fx.id === selectedBlockId);
-    if (effect) return <div className="single-effect-editor" style={{ display: 'flex', justifyContent: 'center' }}><EffectPedal effect={effect.effect} enabled={effect.enabled} onToggle={() => handleToggleEffect(effect.id)} onParamChange={(param, val) => handleParamChange(effect.id, param, val)} color={effect.effect.color} /></div>;
-    return <div className="empty-edit" style={{ color: '#555' }}>SELECT BLOCK</div>;
-  };
-
-  return (
-    <div className="multi-fx-console">
-      <div className="console-main-area">
-        <div className="top-panel">
-          <div className="lcd-section">
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
-              <span style={{ color: '#0cc', fontSize: '12px' }}>BANK {currentBank + 1}</span>
-              <button className={`connect-btn ${isConnected ? 'connected' : ''}`} onClick={isConnected ? handleDisconnect : handleConnect} style={{ padding: '2px 8px', fontSize: '10px' }}>
-                {isConnected ? 'LIVE' : 'BYPASS'}
-              </button>
-            </div>
-            <LCDScreen
-              presetName={presets.find(p => p.id === currentPresetId)?.name}
-              effects={effects}
-              amp={{ model: ampModelId, params: ampParams }}
-              cabinet={{ type: cabType, mic: micPos }}
-              selectedBlockId={selectedBlockId}
-              onSelectBlock={setSelectedBlockId}
+    if (effect) {
+      return (
+        <div className="edit-stack">
+          {/* Always show Amp in compact mode above effects */}
+          <div className="stack-top">
+            <AmpPanel
+              currentModel={ampModelId}
+              params={ampParams}
+              channel={ampChannel}
+              onModelChange={handleAmpModelChange}
+              onParamChange={handleAmpParamChange}
+              onChannelChange={handleChannelChange}
+              compact={true}
             />
           </div>
 
-          <div className="knob-section">
-            {/* Global/Quick Knobs mimicking GP-200 */}
-            <Knob value={masterVol} min={0} max={100} label="MASTER" size={40} onChange={handleVolume} color="#fff" />
-            <div style={{ width: 20 }}></div> {/* Spacer */}
-            <Knob value={ampParams?.gain ?? 50} min={0} max={100} label="GAIN" size={40} onChange={(v) => handleAmpParamChange('gain', v)} color="#ffcc00" />
-            <Knob value={ampParams?.presence ?? 50} min={0} max={100} label="PRESENCE" size={40} onChange={(v) => handleAmpParamChange('presence', v)} color="#ffcc00" />
+          <div className="stack-divider"></div>
 
-            {/* Row 2 */}
-            <Knob value={ampParams?.bass ?? 50} min={0} max={100} label="BASS" size={40} onChange={(v) => handleAmpParamChange('bass', v)} color="#ffcc00" />
-            <Knob value={ampParams?.mid ?? 50} min={0} max={100} label="MID" size={40} onChange={(v) => handleAmpParamChange('mid', v)} color="#ffcc00" />
-            <Knob value={ampParams?.treble ?? 50} min={0} max={100} label="TREBLE" size={40} onChange={(v) => handleAmpParamChange('treble', v)} color="#ffcc00" />
-            <div>{/* Placeholder for Para/Encode */}</div>
+          <div className="stack-bottom">
+            <div className="single-effect-editor">
+              <EffectPedal
+                effect={effect.effect}
+                enabled={effect.enabled}
+                onToggle={() => handleToggleEffect(effect.id)}
+                onParamChange={(param, val) => handleParamChange(effect.id, param, val)}
+                onColorChange={(color) => handleColorChange(effect.id, color)}
+                color={effect.effect.color}
+              />
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Default or empty state (also show Amp?) - For now kept simple
+    return <div className="empty-edit" style={{ color: '#555' }}>SELECT BLOCK</div>;
+  };
+
+  // Render
+  return (
+    <div className="app-editor-container">
+      {/* HEADER */}
+      <header className="editor-header">
+        <div className="header-logo">
+          <h1>JAGAT<span>FX</span> <span className="logo-subtitle">by Wisnu Wardana</span></h1>
+        </div>
+        <div className="header-controls">
+          <button className={`tuner-btn ${showTuner ? 'active' : ''}`} onClick={() => setShowTuner(true)}>
+            TUNER
+          </button>
+          <div className="bpm-display">120 BPM</div>
+          <button className={`connect-btn ${isConnected ? 'connected' : ''}`} onClick={isConnected ? handleDisconnect : handleConnect}>
+            {isConnected ? 'LINKED' : 'CONNECT'}
+          </button>
+        </div>
+      </header>
+
+      {/* BODY */}
+      <div className="editor-body">
+
+        {/* CENTER STAGE */}
+        <div className="center-stage">
+          {/* VISUAL EDITOR */}
+          <div className="visual-editor">
+            {/* TOP ROW: AMP & CAB */}
+            <div className="amp-section">
+              {/* Amp */}
+              <div
+                className={`pedal-wrapper amp-wrapper ${selectedBlockId === 'amp' ? 'selected-pedal' : ''}`}
+                onClick={() => handleBlockSelect('amp')}
+              >
+                <AmpPanel
+                  currentModel={ampModelId}
+                  params={ampParams}
+                  channel={ampChannel}
+                  onModelChange={handleAmpModelChange}
+                  onParamChange={handleAmpParamChange}
+                  onChannelChange={handleChannelChange}
+                  compact={true}
+                />
+              </div>
+
+              {/* Cab */}
+              <div
+                className={`pedal-wrapper cab-wrapper ${selectedBlockId === 'cab' ? 'selected-pedal' : ''}`}
+                onClick={() => handleBlockSelect('cab')}
+              >
+                <CabinetPanel
+                  cabinetType={cabType}
+                  micPosition={micPos}
+                  mix={cabMix}
+                  onCabinetChange={handleCabChange}
+                  onMicChange={handleMicChange}
+                  onMixChange={handleCabMixChange}
+                  compact={true}
+                />
+              </div>
+            </div>
+
+            {/* BOTTOM ROW: EFFECTS */}
+            <div className="pedalboard-section">
+              <div className="pedalboard-container">
+                {effects.map((fx) => (
+                  <div
+                    key={fx.id}
+                    className={`pedal-wrapper ${selectedBlockId === fx.id ? 'selected-pedal' : ''} ${draggedEffectId === fx.id ? 'dragging' : ''}`}
+                    onClick={() => handleBlockSelect(fx.id)}
+                    draggable={true}
+                    onDragStart={(e) => handleDragStart(e, fx.id)}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, fx.id)}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <EffectPedal
+                      effect={fx.effect}
+                      enabled={fx.enabled}
+                      onToggle={(e) => {
+                        e?.stopPropagation();
+                        handleToggleEffect(fx.id);
+                      }}
+                      onParamChange={(param, val) => handleParamChange(fx.id, param, val)}
+                      onColorChange={(color) => handleColorChange(fx.id, color)}
+                      color={fx.effect.color}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* SIGNAL CHAIN STRIP */}
+          <div className="chain-container">
+            {/* We need to import SignalChain first, let me make sure to add the import */}
+            <SignalChain
+              effects={effects}
+              amp={{ model: ampModelId }}
+              cabinet={{ type: cabType }}
+              selectedBlockId={selectedBlockId}
+              onSelectBlock={handleBlockSelect}
+              onToggleBlock={(id) => {
+                if (id === 'amp' || id === 'cab') return; // Can't bypass amp logic yet in this fn
+                handleToggleEffect(id);
+              }}
+            />
           </div>
         </div>
 
-        <div className="edit-display-area">
-          {renderEditArea()}
-        </div>
-
-        <div className="bottom-panel">
-          <Footswitches
-            onPrevBank={handlePrevBank}
-            onNextBank={handleNextBank}
-            onSelectPreset={handleSelectPresetInBank}
-            activePresetIndex={activePresetIndex}
+        {/* RIGHT SIDEBAR - PRESETS */}
+        <div className="preset-sidebar">
+          <PatchList
+            presets={presets}
+            currentPresetId={currentPresetId}
+            onSelect={handlePresetSelect}
+            onSave={handleSaveNewPreset}
+            onDelete={handleDeletePreset}
+            onOverwrite={handleOverwritePreset}
           />
         </div>
       </div>
 
-      <div className="console-right">
-        <ExpressionPedal />
-      </div>
+      {/* TUNER OVERLAY */}
+      <Tuner isOpen={showTuner} onClose={() => setShowTuner(false)} />
     </div>
   );
 }

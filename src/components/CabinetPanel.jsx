@@ -1,18 +1,20 @@
 import Knob from './Knob.jsx';
 import { CABINET_TYPES, MIC_POSITIONS } from '../audio/cabinetSim.js';
 
-export default function CabinetPanel({ cabinetType, micPosition, mix, onCabinetChange, onMicChange, onMixChange }) {
+export default function CabinetPanel({ cabinetType, micPosition, mix, onCabinetChange, onMicChange, onMixChange, compact = false }) {
     const cab = CABINET_TYPES.find(c => c.id === cabinetType) || CABINET_TYPES[0];
 
     return (
-        <div className="cabinet-panel">
-            <div className="cabinet-header">
-                <span className="cabinet-icon">{cab.icon}</span>
-                <h3>CABINET</h3>
-            </div>
+        <div className={`cabinet-panel ${compact ? 'compact' : ''}`}>
+            {!compact && (
+                <div className="cabinet-header">
+                    <span className="cabinet-icon">{cab.icon}</span>
+                    <h3>CABINET</h3>
+                </div>
+            )}
 
             <div className="cabinet-visual">
-                <div className={`cabinet-box cab-${cabinetType}`}>
+                <div className={`cabinet-box cab-${cabinetType} ${compact ? 'small' : ''}`}>
                     {cabinetType.includes('4x12') ? (
                         <div className="speakers-grid four">
                             <div className="speaker" /><div className="speaker" />
@@ -32,7 +34,7 @@ export default function CabinetPanel({ cabinetType, micPosition, mix, onCabinetC
 
             <div className="cabinet-controls">
                 <div className="cabinet-select-group">
-                    <label>Cabinet Type</label>
+                    <label>Type</label>
                     <select
                         className="cabinet-selector"
                         value={cabinetType}
@@ -45,7 +47,7 @@ export default function CabinetPanel({ cabinetType, micPosition, mix, onCabinetC
                 </div>
 
                 <div className="cabinet-select-group">
-                    <label>Mic Position</label>
+                    <label>Mic</label>
                     <select
                         className="cabinet-selector"
                         value={micPosition}
@@ -63,7 +65,7 @@ export default function CabinetPanel({ cabinetType, micPosition, mix, onCabinetC
                     max={100}
                     label="Mix"
                     color="#88ccff"
-                    size={50}
+                    size={compact ? 40 : 50}
                     onChange={onMixChange}
                 />
             </div>
