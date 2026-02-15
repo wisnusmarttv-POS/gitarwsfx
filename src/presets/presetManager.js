@@ -101,7 +101,8 @@ export function createPresetSnapshot(name, description, effects, amp, cabinet, i
         cabinet: {
             type: cabinet.cabinetId,
             mic: cabinet.micPosition,
-            mix: cabinet.params.mix.value
+            mix: cabinet.params.mix.value,
+            enabled: cabinet.enabled
         },
         effects: effects.map(e => ({
             type: e.typeId,
@@ -113,3 +114,17 @@ export function createPresetSnapshot(name, description, effects, amp, cabinet, i
         }))
     };
 }
+
+// Rename a user preset
+export function renamePreset(id, newName) {
+    const userPresets = getUserPresets();
+    const index = userPresets.findIndex(p => p.id === id);
+    if (index >= 0) {
+        userPresets[index].name = newName;
+        userPresets[index].updatedAt = new Date().toISOString();
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(userPresets));
+        return userPresets[index];
+    }
+    return null;
+}
+

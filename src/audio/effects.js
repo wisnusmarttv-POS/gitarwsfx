@@ -2,13 +2,35 @@
 import { getAudioContext } from './audioEngine.js';
 
 // ===================== DISTORTION =====================
+// ===================== DISTORTION =====================
 const DIST_MODELS = {
-    'green_od': { name: 'Green OD', gainMult: 4, toneFreq: 720, color: '#55ff55', label: 'Drive' },
-    'yellow_od': { name: 'Yellow OD', gainMult: 5, toneFreq: 800, color: '#ffcc00', label: 'Drive' },
-    'rat': { name: 'Rat Dist', gainMult: 12, toneFreq: 1000, color: '#444444', label: 'Dist' },
-    'blues': { name: 'Blues OD', gainMult: 3, toneFreq: 1500, color: '#4488ff', label: 'Gain' },
-    'fuzz': { name: 'Big Fuzz', gainMult: 25, toneFreq: 400, color: '#cc4422', label: 'Sustain' },
-    'metal': { name: 'Metal Zone', gainMult: 40, toneFreq: 2500, color: '#333333', label: 'Dist' }
+    // === OVERDRIVES ===
+    'green_od': { name: 'Green OD', type: 'soft', gainMult: 4, toneFreq: 720, color: '#55ff55', label: 'Drive' },
+    'yellow_od': { name: 'Yellow OD', type: 'soft', gainMult: 5, toneFreq: 800, color: '#ffcc00', label: 'Drive' },
+    'blues': { name: 'Blues OD', type: 'soft', gainMult: 3, toneFreq: 1500, color: '#4488ff', label: 'Gain' },
+    'klon': { name: 'Centaur', type: 'soft', gainMult: 3.5, toneFreq: 1200, color: '#c0c0c0', label: 'Gain' }, // Transparent
+    'tube': { name: 'Tube Driver', type: 'soft', gainMult: 4, toneFreq: 600, color: '#ddddaa', label: 'Tube' },
+    'ocd': { name: 'OC Drive', type: 'hard', gainMult: 6, toneFreq: 900, color: '#ffffff', label: 'Drive' },
+    'timmy': { name: 'Timmy', type: 'soft', gainMult: 3, toneFreq: 2000, color: '#aaddff', label: 'Gain' },
+    'bb_pre': { name: 'BB Pre', type: 'soft', gainMult: 4.5, toneFreq: 1100, color: '#ffaa55', label: 'Gain' },
+    'ac_boost': { name: 'AC Boost', type: 'soft', gainMult: 3.5, toneFreq: 1000, color: '#ffff55', label: 'Gain' },
+
+    // === DISTORTIONS ===
+    'rat': { name: 'Rat Dist', type: 'hard', gainMult: 12, toneFreq: 1000, color: '#333333', label: 'Dist' },
+    'ds1': { name: 'Orange Dist', type: 'hard', gainMult: 15, toneFreq: 2500, color: '#ff8800', label: 'Dist' },
+    'guvnor': { name: 'Guv\'nor', type: 'hard', gainMult: 10, toneFreq: 800, color: '#333333', label: 'Gain' },
+    'mxr_dist': { name: 'D-Plus', type: 'hard', gainMult: 9, toneFreq: 1800, color: '#ddaa00', label: 'Dist' },
+    'crunch': { name: 'Crunch Box', type: 'hard', gainMult: 18, toneFreq: 1200, color: '#dd3333', label: 'Gain' },
+    'hm2': { name: 'Swede Metal', type: 'hard', gainMult: 25, toneFreq: 900, color: '#222222', label: 'Dist' },
+    'metal': { name: 'Metal Zone', type: 'hard', gainMult: 40, toneFreq: 3500, color: '#111111', label: 'Dist' },
+
+    // === FUZZES ===
+    'fuzz': { name: 'Big Fuzz', type: 'fuzz', gainMult: 25, toneFreq: 400, color: '#cc4422', label: 'Sustain' },
+    'face_germ': { name: 'Fuzz Face Ge', type: 'fuzz', gainMult: 18, toneFreq: 350, color: '#3333cc', label: 'Fuzz' }, // Warm
+    'face_si': { name: 'Fuzz Face Si', type: 'fuzz', gainMult: 22, toneFreq: 1500, color: '#33aacccc', label: 'Fuzz' }, // Bright
+    'tone_bender': { name: 'Tone Bender', type: 'fuzz', gainMult: 20, toneFreq: 1000, color: '#888888', label: 'Attack' },
+    'muff_gr': { name: 'Green Muff', type: 'fuzz', gainMult: 30, toneFreq: 300, color: '#446644', label: 'Sustain' },
+    'octavia': { name: 'Octavia', type: 'octave', gainMult: 15, toneFreq: 2000, color: '#eeeeee', label: 'Boost' }
 };
 
 export function createDistortion(params = {}) {
@@ -25,11 +47,11 @@ export function createDistortion(params = {}) {
     let currentModel = DIST_MODELS[modelId] || DIST_MODELS['green_od'];
 
     const gain = params.gain ?? 50;
-    const tone = params.tone ?? 5000;
+    const tone = params.tone ?? currentModel.toneFreq;
     const mix = params.mix ?? 80;
 
     preGain.gain.value = gain / 10;
-    waveshaper.curve = makeDistortionCurve(gain * currentModel.gainMult);
+    updateCurve(currentModel, gain);
     waveshaper.oversample = '4x';
 
     toneFilter.type = 'lowpass';
@@ -47,6 +69,17 @@ export function createDistortion(params = {}) {
     input.connect(dryGain);
     dryGain.connect(output);
 
+    function updateCurve(model, gainVal) {
+        const amount = gainVal * model.gainMult;
+        switch (model.type) {
+            case 'hard': waveshaper.curve = makeHardClipCurve(amount); break;
+            case 'fuzz': waveshaper.curve = makeFuzzCurve(amount); break;
+            case 'octave': waveshaper.curve = makeOctaveCurve(amount); break;
+            case 'soft':
+            default: waveshaper.curve = makeDistortionCurve(amount); break;
+        }
+    }
+
     return {
         node: input,
         outputNode: output,
@@ -60,26 +93,21 @@ export function createDistortion(params = {}) {
                 label: 'Model'
             },
             gain: { value: gain, min: 0, max: 100, label: currentModel.label },
-            tone: { value: tone, min: 500, max: 10000, label: 'Tone' },
+            tone: { value: tone, min: 100, max: 8000, label: 'Tone' }, // Expanded range
             mix: { value: mix, min: 0, max: 100, label: 'Mix' }
         },
         update(p) {
-            if (p.model !== undefined) {
-                const newModelId = p.model;
-                if (DIST_MODELS[newModelId]) {
-                    currentModel = DIST_MODELS[newModelId];
-                    this.name = currentModel.name;
-                    this.color = currentModel.color;
-                    this.params.model.value = newModelId;
-                    this.params.gain.label = currentModel.label;
-
-                    // Re-apply gain curve with new multiplier
-                    waveshaper.curve = makeDistortionCurve(this.params.gain.value * currentModel.gainMult);
-                }
+            if (p.model !== undefined && DIST_MODELS[p.model]) {
+                currentModel = DIST_MODELS[p.model];
+                this.name = currentModel.name;
+                this.color = currentModel.color;
+                this.params.model.value = p.model;
+                this.params.gain.label = currentModel.label;
+                updateCurve(currentModel, this.params.gain.value);
             }
             if (p.gain !== undefined) {
                 preGain.gain.setTargetAtTime(p.gain / 10, ctx.currentTime, 0.01);
-                waveshaper.curve = makeDistortionCurve(p.gain * currentModel.gainMult);
+                updateCurve(currentModel, p.gain);
                 this.params.gain.value = p.gain;
             }
             if (p.tone !== undefined) {
@@ -95,14 +123,57 @@ export function createDistortion(params = {}) {
     };
 }
 
+// Standard Soft Clip / Overdrive
 function makeDistortionCurve(amount) {
     const samples = 44100;
     const curve = new Float32Array(samples);
     const deg = Math.PI / 180;
     for (let i = 0; i < samples; i++) {
         const x = (i * 2) / samples - 1;
-        // Adjusted sigmal function for varied character
         curve[i] = ((3 + amount) * x * 20 * deg) / (Math.PI + amount * Math.abs(x));
+    }
+    return curve;
+}
+
+// Hard Clipping (Square-ish)
+function makeHardClipCurve(amount) {
+    const samples = 44100;
+    const curve = new Float32Array(samples);
+    const k = amount * 0.5;
+    for (let i = 0; i < samples; i++) {
+        let x = (i * 2) / samples - 1;
+        x = x * k;
+        if (x > 1) x = 1;
+        if (x < -1) x = -1;
+        curve[i] = x;
+    }
+    return curve;
+}
+
+// Fuzz (Asymmetric / Gated)
+function makeFuzzCurve(amount) {
+    const samples = 44100;
+    const curve = new Float32Array(samples);
+    const k = amount;
+    for (let i = 0; i < samples; i++) {
+        let x = (i * 2) / samples - 1;
+        // Asymmetric
+        if (x > 0) x = 1 - Math.exp(-x * k);
+        else x = -1 + Math.exp(x * k * 0.5); // Different slope for negative
+        curve[i] = x;
+    }
+    return curve;
+}
+
+// Octave (Full Wave Rectification)
+function makeOctaveCurve(amount) {
+    const samples = 44100;
+    const curve = new Float32Array(samples);
+    for (let i = 0; i < samples; i++) {
+        const x = (i * 2) / samples - 1;
+        // Full wave rectification = absolute value -> doubling frequency
+        // Mixed with some original signal for flavor? Pure octave here.
+        curve[i] = (Math.abs(x) * 2 - 1) * 0.8;
     }
     return curve;
 }
@@ -347,6 +418,14 @@ export function createDelay(params = {}) {
 }
 
 // ===================== CHORUS =====================
+// ===================== CHORUS =====================
+const CHORUS_MODELS = {
+    'ce-1': { name: 'CE-1 Chorus', color: '#6666ff', rate: 1.5, depth: 50, mix: 50, type: 'sine' },
+    'tri': { name: 'Tri-Chorus', color: '#aa44ff', rate: 2.0, depth: 60, mix: 60, type: 'triangle' },
+    'vibrato': { name: 'Vibrato', color: '#ff66aa', rate: 4.0, depth: 40, mix: 100, type: 'sine' }, // 100% wet
+    'dim': { name: 'Dimension', color: '#ccccff', rate: 0.5, depth: 80, mix: 40, type: 'sine' } // Subtle, wide
+};
+
 export function createChorus(params = {}) {
     const ctx = getAudioContext();
     const input = ctx.createGain();
@@ -357,18 +436,22 @@ export function createChorus(params = {}) {
     const wetGain = ctx.createGain();
     const dryGain = ctx.createGain();
 
-    const rate = params.rate ?? 1.5;
-    const depth = params.depth ?? 50;
-    const mix = params.mix ?? 50;
+    const modelId = params.model || 'ce-1';
+    let currentModel = CHORUS_MODELS[modelId] || CHORUS_MODELS['ce-1'];
 
-    delay.delayTime.value = 0.02;
-    lfo.type = 'sine';
+    const rate = params.rate ?? currentModel.rate;
+    const depth = params.depth ?? currentModel.depth;
+    const mix = params.mix ?? currentModel.mix;
+
+    delay.delayTime.value = 0.02; // 20ms base delay
+    lfo.type = currentModel.type;
     lfo.frequency.value = rate;
-    lfoGain.gain.value = (depth / 100) * 0.01;
+    lfoGain.gain.value = (depth / 100) * 0.004; // scaled depth
 
     wetGain.gain.value = mix / 100;
-    dryGain.gain.value = 1 - mix / 100;
+    dryGain.gain.value = 1 - (mix / 100);
 
+    // Routing
     lfo.connect(lfoGain);
     lfoGain.connect(delay.delayTime);
     lfo.start();
@@ -382,20 +465,41 @@ export function createChorus(params = {}) {
     return {
         node: input,
         outputNode: output,
-        name: 'Chorus',
-        color: '#aa44ff',
+        name: currentModel.name,
+        color: currentModel.color,
         params: {
+            model: {
+                value: modelId,
+                type: 'select',
+                options: Object.keys(CHORUS_MODELS).map(k => ({ value: k, label: CHORUS_MODELS[k].name })),
+                label: 'Model'
+            },
             rate: { value: rate, min: 0.1, max: 10, label: 'Rate', step: 0.1 },
             depth: { value: depth, min: 0, max: 100, label: 'Depth' },
             mix: { value: mix, min: 0, max: 100, label: 'Mix' }
         },
         update(p) {
+            if (p.model !== undefined && CHORUS_MODELS[p.model]) {
+                currentModel = CHORUS_MODELS[p.model];
+                this.name = currentModel.name;
+                this.color = currentModel.color;
+                this.params.model.value = p.model;
+
+                // Update LFO shape
+                lfo.type = currentModel.type;
+
+                // Force mix for Vibrato if needed, or let user adjust? 
+                // Let's reset default mix if switching TO vibrato to ensure effect is heard correctly
+                if (p.model === 'vibrato' && this.params.mix.value < 90) {
+                    this.update({ mix: 100 });
+                }
+            }
             if (p.rate !== undefined) {
                 lfo.frequency.setTargetAtTime(p.rate, ctx.currentTime, 0.01);
                 this.params.rate.value = p.rate;
             }
             if (p.depth !== undefined) {
-                lfoGain.gain.setTargetAtTime((p.depth / 100) * 0.01, ctx.currentTime, 0.01);
+                lfoGain.gain.setTargetAtTime((p.depth / 100) * 0.004, ctx.currentTime, 0.01);
                 this.params.depth.value = p.depth;
             }
             if (p.mix !== undefined) {
@@ -408,58 +512,87 @@ export function createChorus(params = {}) {
 }
 
 // ===================== EQ (3-Band) =====================
+// ===================== EQ (3-Band) =====================
+const EQ_MODELS = {
+    'studio': { name: 'Studio EQ', color: '#ffaa00', low: 100, mid: 800, high: 5000, lowType: 'lowshelf', highType: 'highshelf', midQ: 1.0 },
+    'vintage': { name: 'Vintage EQ', color: '#dd9933', low: 200, mid: 1200, high: 4000, lowType: 'lowshelf', highType: 'highshelf', midQ: 0.5 }, // Warmer, broader
+    'scoop': { name: 'Scoop EQ', color: '#cc4400', low: 150, mid: 600, high: 3500, lowType: 'peaking', highType: 'peaking', midQ: 2.0 }, // Aggressive mid cut
+    'boost': { name: 'Mid Boost', color: '#ffcc00', low: 250, mid: 1000, high: 3000, lowType: 'lowshelf', highType: 'highshelf', midQ: 0.7 }
+};
+
 export function createEQ(params = {}) {
     const ctx = getAudioContext();
     const input = ctx.createGain();
     const output = ctx.createGain();
 
-    const lowShelf = ctx.createBiquadFilter();
-    const midPeak = ctx.createBiquadFilter();
-    const highShelf = ctx.createBiquadFilter();
+    const lowBand = ctx.createBiquadFilter();
+    const midBand = ctx.createBiquadFilter();
+    const highBand = ctx.createBiquadFilter();
+
+    const modelId = params.model || 'studio';
+    let currentModel = EQ_MODELS[modelId] || EQ_MODELS['studio'];
 
     const low = params.low ?? 0;
     const mid = params.mid ?? 0;
     const high = params.high ?? 0;
 
-    lowShelf.type = 'lowshelf';
-    lowShelf.frequency.value = 320;
-    lowShelf.gain.value = low;
+    applyModel(currentModel);
 
-    midPeak.type = 'peaking';
-    midPeak.frequency.value = 1000;
-    midPeak.Q.value = 1;
-    midPeak.gain.value = mid;
+    lowBand.gain.value = low;
+    midBand.gain.value = mid;
+    highBand.gain.value = high;
 
-    highShelf.type = 'highshelf';
-    highShelf.frequency.value = 3200;
-    highShelf.gain.value = high;
+    input.connect(lowBand);
+    lowBand.connect(midBand);
+    midBand.connect(highBand);
+    highBand.connect(output);
 
-    input.connect(lowShelf);
-    lowShelf.connect(midPeak);
-    midPeak.connect(highShelf);
-    highShelf.connect(output);
+    function applyModel(model) {
+        lowBand.type = model.lowType;
+        lowBand.frequency.value = model.low;
+
+        midBand.type = 'peaking';
+        midBand.frequency.value = model.mid;
+        midBand.Q.value = model.midQ;
+
+        highBand.type = model.highType;
+        highBand.frequency.value = model.high;
+    }
 
     return {
         node: input,
         outputNode: output,
-        name: 'EQ',
-        color: '#ffaa00',
+        name: currentModel.name,
+        color: currentModel.color,
         params: {
-            low: { value: low, min: -12, max: 12, label: 'Low' },
-            mid: { value: mid, min: -12, max: 12, label: 'Mid' },
-            high: { value: high, min: -12, max: 12, label: 'High' }
+            model: {
+                value: modelId,
+                type: 'select',
+                options: Object.keys(EQ_MODELS).map(k => ({ value: k, label: EQ_MODELS[k].name })),
+                label: 'Model'
+            },
+            low: { value: low, min: -15, max: 15, label: 'Low' },
+            mid: { value: mid, min: -15, max: 15, label: 'Mid' },
+            high: { value: high, min: -15, max: 15, label: 'High' }
         },
         update(p) {
+            if (p.model !== undefined && EQ_MODELS[p.model]) {
+                currentModel = EQ_MODELS[p.model];
+                this.name = currentModel.name;
+                this.color = currentModel.color;
+                this.params.model.value = p.model;
+                applyModel(currentModel);
+            }
             if (p.low !== undefined) {
-                lowShelf.gain.setTargetAtTime(p.low, ctx.currentTime, 0.01);
+                lowBand.gain.setTargetAtTime(p.low, ctx.currentTime, 0.01);
                 this.params.low.value = p.low;
             }
             if (p.mid !== undefined) {
-                midPeak.gain.setTargetAtTime(p.mid, ctx.currentTime, 0.01);
+                midBand.gain.setTargetAtTime(p.mid, ctx.currentTime, 0.01);
                 this.params.mid.value = p.mid;
             }
             if (p.high !== undefined) {
-                highShelf.gain.setTargetAtTime(p.high, ctx.currentTime, 0.01);
+                highBand.gain.setTargetAtTime(p.high, ctx.currentTime, 0.01);
                 this.params.high.value = p.high;
             }
         }
@@ -467,6 +600,13 @@ export function createEQ(params = {}) {
 }
 
 // ===================== COMPRESSOR =====================
+// ===================== COMPRESSOR =====================
+const COMP_MODELS = {
+    'studio': { name: 'Studio Comp', color: '#FFD700', ratio: 4, attack: 0.01, release: 0.1, knee: 5 },
+    'ross': { name: 'Vintage Ross', color: '#aa8822', ratio: 8, attack: 0.005, release: 0.2, knee: 20 },
+    'optical': { name: 'Optical', color: '#eeeeee', ratio: 3, attack: 0.03, release: 0.5, knee: 30 }
+};
+
 export function createCompressor(params = {}) {
     const ctx = getAudioContext();
     const input = ctx.createGain();
@@ -474,34 +614,62 @@ export function createCompressor(params = {}) {
     const compressor = ctx.createDynamicsCompressor();
     const makeupGain = ctx.createGain();
 
+    const modelId = params.model || 'studio';
+    let currentModel = COMP_MODELS[modelId] || COMP_MODELS['studio'];
+
     const threshold = params.threshold ?? -24;
-    const ratio = params.ratio ?? 4;
-    const attack = params.attack ?? 0.003;
-    const release = params.release ?? 0.25;
+    const ratio = params.ratio ?? currentModel.ratio;
+    const attack = params.attack ?? currentModel.attack;
+    const release = params.release ?? currentModel.release;
+
+    applyModel(currentModel);
 
     compressor.threshold.value = threshold;
     compressor.ratio.value = ratio;
     compressor.attack.value = attack;
     compressor.release.value = release;
-    compressor.knee.value = 6;
-    makeupGain.gain.value = 1.5;
+
+    // Auto-makeup or manual level? Let's use manual level for "Level" knob if we had one, 
+    // but here we just have standard controls. Let's add a fixed makeup based on threshold for now or keep unit gain.
+    makeupGain.gain.value = 1.0;
 
     input.connect(compressor);
     compressor.connect(makeupGain);
     makeupGain.connect(output);
 
+    function applyModel(model) {
+        compressor.knee.value = model.knee;
+    }
+
     return {
         node: input,
         outputNode: output,
-        name: 'Compressor',
-        color: '#FFD700',
+        name: currentModel.name,
+        color: currentModel.color,
         params: {
+            model: {
+                value: modelId,
+                type: 'select',
+                options: Object.keys(COMP_MODELS).map(k => ({ value: k, label: COMP_MODELS[k].name })),
+                label: 'Model'
+            },
             threshold: { value: threshold, min: -60, max: 0, label: 'Thresh' },
             ratio: { value: ratio, min: 1, max: 20, label: 'Ratio' },
             attack: { value: attack * 1000, min: 0, max: 100, label: 'Attack', step: 1 },
             release: { value: release * 1000, min: 10, max: 1000, label: 'Release', step: 10 }
         },
         update(p) {
+            if (p.model !== undefined && COMP_MODELS[p.model]) {
+                currentModel = COMP_MODELS[p.model];
+                this.name = currentModel.name;
+                this.color = currentModel.color;
+                this.params.model.value = p.model;
+                applyModel(currentModel);
+
+                // Optional: reset params to model defaults? Or keep user settings?
+                // Keeping user settings for ratio/attack/release is flexible, 
+                // but knee changes internally.
+            }
             if (p.threshold !== undefined) {
                 compressor.threshold.setTargetAtTime(p.threshold, ctx.currentTime, 0.01);
                 this.params.threshold.value = p.threshold;
@@ -695,6 +863,12 @@ export function createPhaser(params = {}) {
 }
 
 // ===================== COMPRESSOR SUSTAINER =====================
+const SUSTAINER_MODELS = {
+    'blue': { name: 'Blue CS', color: '#0099CC', attack: 0.005, release: 0.5, ratio: 12 },
+    'orange': { name: 'Orange Sq', color: '#ff8800', attack: 0.002, release: 0.8, ratio: 20 },
+    'ross': { name: 'Ross Comp', color: '#888888', attack: 0.01, release: 0.2, ratio: 8 }
+};
+
 export function createCompSustainer(params = {}) {
     const ctx = getAudioContext();
     const input = ctx.createGain();
@@ -702,16 +876,19 @@ export function createCompSustainer(params = {}) {
     const compressor = ctx.createDynamicsCompressor();
     const makeupGain = ctx.createGain();
 
+    const modelId = params.model || 'blue';
+    let currentModel = SUSTAINER_MODELS[modelId] || SUSTAINER_MODELS['blue'];
+
     // Sustainer defaults: Lower threshold, Higher ratio, Slower release
     const threshold = params.threshold ?? -30;
-    const ratio = params.ratio ?? 12;
-    const attack = params.attack ?? 0.002;
-    const release = params.release ?? 0.5;
+    const ratio = params.ratio ?? currentModel.ratio;
+    const attack = params.attack ?? currentModel.attack;
+    const release = params.release ?? 0.25; // Release often manual on pedal
     const level = params.level ?? 60; // Output level
 
+    applyModel(currentModel);
+
     compressor.threshold.value = threshold;
-    compressor.ratio.value = ratio;
-    compressor.attack.value = attack;
     compressor.release.value = release;
     compressor.knee.value = 10;
 
@@ -722,32 +899,42 @@ export function createCompSustainer(params = {}) {
     compressor.connect(makeupGain);
     makeupGain.connect(output);
 
+    function applyModel(model) {
+        compressor.attack.value = model.attack;
+        compressor.ratio.value = model.ratio;
+    }
+
     return {
         node: input,
         outputNode: output,
-        name: 'Comp Sustainer',
-        color: '#0099CC', // Blue-ish like CS-3
+        name: currentModel.name,
+        color: currentModel.color,
         params: {
-            threshold: { value: threshold, min: -60, max: -10, label: 'Sustain' }, // Sustain maps to threshold (inverse logic visually, but here direct value) - let's keep it 'Sustain' label but logic is: Lower threshold = More sustain. 
-            // Wait, standard compressor param is Threshold. if I label it "Sustain", user expects turning UP to give MORE sustain.
-            // If I map "Sustain" 0-100 to Threshold -60 to -10, effectively turning UP increases threshold (less sustain).
-            // So "Sustain" knob should invert: 0 -> -10dB, 100 -> -60dB.
-            // But `EffectPedal` passes raw value. I should keep it simple for now or basic 'Threshold'.
-            // Let's stick to standard controls to ensure stability, just renamed/retuned.
+            model: {
+                value: modelId,
+                type: 'select',
+                options: Object.keys(SUSTAINER_MODELS).map(k => ({ value: k, label: SUSTAINER_MODELS[k].name })),
+                label: 'Model'
+            },
             threshold: { value: threshold, min: -60, max: 0, label: 'Thresh' },
-            ratio: { value: ratio, min: 1, max: 20, label: 'Ratio' },
-            attack: { value: attack * 1000, min: 0, max: 100, label: 'Attack', step: 1 },
+            // Removed ratio control for simpler UI, usually fixed in pedal sustains
+            // Added Attack control? Sustainer usually has Level, Tone, Attack, Sustain.
+            attack: { value: attack * 1000, min: 0, max: 100, label: 'Attack' },
             level: { value: level, min: 0, max: 100, label: 'Level' }
         },
         update(p) {
+            if (p.model !== undefined && SUSTAINER_MODELS[p.model]) {
+                currentModel = SUSTAINER_MODELS[p.model];
+                this.name = currentModel.name;
+                this.color = currentModel.color;
+                this.params.model.value = p.model;
+                applyModel(currentModel);
+            }
             if (p.threshold !== undefined) {
                 compressor.threshold.setTargetAtTime(p.threshold, ctx.currentTime, 0.01);
                 this.params.threshold.value = p.threshold;
             }
-            if (p.ratio !== undefined) {
-                compressor.ratio.setTargetAtTime(p.ratio, ctx.currentTime, 0.01);
-                this.params.ratio.value = p.ratio;
-            }
+            // Ratio is fixed per model for simplicity here
             if (p.attack !== undefined) {
                 compressor.attack.setTargetAtTime(p.attack / 1000, ctx.currentTime, 0.01);
                 this.params.attack.value = p.attack;
@@ -761,6 +948,18 @@ export function createCompSustainer(params = {}) {
 }
 
 // ===================== STRING ENSEMBLE =====================
+const STRING_MODELS = {
+    '1': { name: 'Symphonic', rates: [0.6, 0.83, 1.1] },
+    '2': { name: 'June-O', rates: [4.0, 4.5, 5.0] },
+    '3': { name: 'PCM', rates: [0.1, 0.2, 0.3] },
+    '4': { name: 'Floppy', rates: [6.0, 7.0, 8.0] },
+    '5': { name: 'AARP', rates: [1.5, 2.0, 2.5] },
+    '6': { name: 'Crewman', rates: [0.5, 1.0, 1.5] },
+    '7': { name: 'Orch Freeze', rates: [0.2, 0.4, 0.6] },
+    '8': { name: 'Synth Freeze', rates: [2.5, 3.5, 4.5] },
+    '9': { name: 'Vox Freeze', rates: [3.0, 5.0, 7.0] }
+};
+
 export function createStringEnsemble(params = {}) {
     const ctx = getAudioContext();
     const input = ctx.createGain();
@@ -818,7 +1017,7 @@ export function createStringEnsemble(params = {}) {
     const dry = params.dry ?? 0;
     const tone = params.ctrl1 ?? 50; // Filter Cutoff
     const sustain = params.ctrl2 ?? 50; // Mod Depth
-    const mode = params.mode ?? 1; // 1-9
+    const mode = params.mode ?? '1'; // Default mode key
 
     // Apply initial params
     toneFilter.frequency.value = 500 + (tone * 100); // 500Hz to 10kHz
@@ -828,19 +1027,9 @@ export function createStringEnsemble(params = {}) {
 
     // LFO rates based on mode + modulation
     const setLfoRates = (m, depth) => {
-        const baseRates = [
-            [0.6, 0.83, 1.1], // Mode 1: Symphonic (Slow, deep)
-            [4.0, 4.5, 5.0], // Mode 2: June-O (Fast)
-            [0.1, 0.2, 0.3], // Mode 3: PCM (Very slow)
-            [6.0, 7.0, 8.0], // Mode 4: Floppy (Vibrato-ish)
-            [1.5, 2.0, 2.5],  // Mode 5: AARP (Medium)
-            [0.5, 1.0, 1.5],  // Mode 6: Crewman
-            [0.2, 0.4, 0.6],  // Mode 7: Orch Freeze
-            [2.5, 3.5, 4.5],  // Mode 8: Synth Freeze
-            [3.0, 5.0, 7.0]   // Mode 9: Vox Freeze
-        ];
+        const modelData = STRING_MODELS[m] || STRING_MODELS['1'];
+        const rates = modelData.rates;
 
-        const rates = baseRates[(m - 1) % 9];
         lfos.forEach((lfo, i) => {
             lfo.frequency.setTargetAtTime(rates[i], ctx.currentTime, 0.01);
             // Depth modulation by sustain param
@@ -864,11 +1053,16 @@ export function createStringEnsemble(params = {}) {
         name: 'String Ensemble',
         color: '#f0e68c', // Khaki/Cream color like String9
         params: {
+            mode: {
+                value: mode,
+                type: 'select',
+                options: Object.keys(STRING_MODELS).map(k => ({ value: k, label: STRING_MODELS[k].name })),
+                label: 'Mode'
+            },
             vol: { value: vol, min: 0, max: 100, label: 'Vol' },
             dry: { value: dry, min: 0, max: 100, label: 'Dry' },
             ctrl1: { value: tone, min: 0, max: 100, label: 'Tone' },
-            ctrl2: { value: sustain, min: 0, max: 100, label: 'Mod' },
-            mode: { value: mode, min: 1, max: 9, label: 'Mode', step: 1 }
+            ctrl2: { value: sustain, min: 0, max: 100, label: 'Mod' }
         },
         update(p) {
             if (p.vol !== undefined) {

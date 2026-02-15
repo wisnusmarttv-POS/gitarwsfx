@@ -100,9 +100,154 @@ export const FACTORY_PRESETS = [
         effects: [
             { type: 'noisegate', enabled: true, params: { threshold: -40 } },
             { type: 'compressor', enabled: true, params: { threshold: -15, ratio: 4, attack: 5, release: 200 } },
-            { type: 'distortion', enabled: true, params: { gain: 55, tone: 5500, mix: 65 } },
-            { type: 'delay', enabled: true, params: { time: 320, feedback: 30, mix: 25 } },
-            { type: 'reverb', enabled: true, params: { roomSize: 40, damping: 50, mix: 20 } }
+            { type: 'distortion', enabled: true, params: { model: 'ds1', gain: 55, tone: 5500, mix: 65 } },
+            { type: 'delay', enabled: true, params: { model: 'digital', time: 320, feedback: 30, mix: 25 } },
+            { type: 'reverb', enabled: true, params: { model: 'plate', decay: 4, tone: 50, mix: 20 } }
+        ]
+    },
+    // === ARTIST PRESETS ===
+    {
+        id: 'slash_sweet',
+        name: '🎩 Slash Sweet',
+        description: 'Iconic Intro Tone',
+        amp: { model: 'marshall_jcm800', params: { gain: 65, bass: 7, mid: 4, treble: 6, presence: 5, master: 80 } },
+        cabinet: { type: '4x12_closed', mic: 'close', mix: 100 },
+        effects: [
+            { type: 'distortion', enabled: true, params: { model: 'green_od', gain: 30, tone: 6000, mix: 60 } }, // Boost
+            { type: 'delay', enabled: true, params: { model: 'digital', time: 420, feedback: 25, mix: 15 } },
+            { type: 'reverb', enabled: true, params: { model: 'hall', decay: 3, tone: 40, mix: 15 } }
+        ]
+    },
+    {
+        id: 'brian_may_boh',
+        name: '👑 Brian Boh',
+        description: 'Queen Bohemian Tone',
+        amp: { model: 'vox_ac30', params: { gain: 100, bass: 4, mid: 8, treble: 8, presence: 8, master: 100 } },
+        cabinet: { type: '2x12', mic: 'close', mix: 100 },
+        effects: [
+            { type: 'distortion', enabled: true, params: { model: 'ac_boost', gain: 70, tone: 7000, mix: 100 } }, // Treble Booster
+            { type: 'chorus', enabled: true, params: { model: 'ce1', rate: 0.4, depth: 30, mix: 40 } }, // Thickener
+            { type: 'reverb', enabled: true, params: { model: 'room', decay: 2, tone: 60, mix: 10 } }
+        ]
+    },
+    {
+        id: 'gary_moore_par',
+        name: '🇮🇪 Gary Paris',
+        description: 'Sustain for days',
+        amp: { model: 'marshall_jcm800', params: { gain: 85, bass: 6, mid: 7, treble: 5, presence: 4, master: 70 } },
+        cabinet: { type: '4x12_closed', mic: 'close', mix: 95 },
+        effects: [
+            { type: 'distortion', enabled: true, params: { model: 'guvnor', gain: 60, tone: 4000, mix: 80 } },
+            { type: 'reverb', enabled: true, params: { model: 'hall', decay: 5, tone: 30, mix: 35 } },
+            { type: 'delay', enabled: true, params: { model: 'analog', time: 550, feedback: 40, mix: 25 } }
+        ]
+    },
+    {
+        id: 'kirk_sandman',
+        name: '💤 Enter Kirk',
+        description: 'Heavy Riff Machine',
+        amp: { model: 'peavey_6505', params: { gain: 75, bass: 8, mid: 3, treble: 7, presence: 6, master: 60 } },
+        cabinet: { type: '4x12_closed', mic: 'close', mix: 100 },
+        effects: [
+            { type: 'noisegate', enabled: true, params: { threshold: -30 } },
+            { type: 'distortion', enabled: true, params: { model: 'metal', gain: 50, tone: 2000, mix: 60 } }, // Tightener
+            { type: 'eq', enabled: true, params: { model: 'scoop', low: 4, mid: -4, high: 3 } }
+        ]
+    },
+    {
+        id: 'james_master',
+        name: '🦁 Master Het',
+        description: 'Downpicked Thrash',
+        amp: { model: 'mesa_rectifier', params: { gain: 70, bass: 7, mid: 2, treble: 6, presence: 5, master: 55 } },
+        cabinet: { type: '4x12_closed', mic: 'close', mix: 100 },
+        effects: [
+            { type: 'noisegate', enabled: true, params: { threshold: -45 } },
+            { type: 'distortion', enabled: true, params: { model: 'green_od', gain: 0, tone: 5000, mix: 100 } }, // Tight boost
+            { type: 'eq', enabled: true, params: { model: 'active', low: 2, mid: -2, high: 2 } }
+        ]
+    },
+    {
+        id: 'petrucci_dream',
+        name: '🎭 Dream Tone',
+        description: 'Prog Metal Lead',
+        amp: { model: 'mesa_rectifier', params: { gain: 85, bass: 6, mid: 6, treble: 7, presence: 6, master: 60 } },
+        cabinet: { type: '4x12_closed', mic: 'close', mix: 100 },
+        effects: [
+            { type: 'chorus', enabled: true, params: { model: 'tri', rate: 0.6, depth: 40, mix: 30 } },
+            { type: 'delay', enabled: true, params: { model: 'digital', time: 480, feedback: 45, mix: 35 } },
+            { type: 'reverb', enabled: true, params: { model: 'plate', decay: 4, tone: 60, mix: 25 } }
+        ]
+    },
+    {
+        id: 'yngwie_rising',
+        name: '🏎️ Neo Classic',
+        description: 'Release the Fury',
+        amp: { model: 'marshall_plexi', params: { gain: 100, bass: 5, mid: 6, treble: 8, presence: 8, master: 100 } },
+        cabinet: { type: '4x12_closed', mic: 'close', mix: 90 },
+        effects: [
+            { type: 'noisegate', enabled: true, params: { threshold: -40 } },
+            { type: 'distortion', enabled: true, params: { model: 'green_od', gain: 80, tone: 6000, mix: 80 } }, // DOD 250 style
+            { type: 'reverb', enabled: true, params: { model: 'hall', decay: 4, tone: 40, mix: 30 } }
+        ]
+    },
+    {
+        id: 'evh_eruption',
+        name: '🌋 Eruption',
+        description: 'Brown Sound',
+        amp: { model: 'evh_5150', params: { gain: 85, bass: 6, mid: 4, treble: 7, presence: 7, master: 70 } },
+        cabinet: { type: '4x12_closed', mic: 'close', mix: 100 },
+        effects: [
+            { type: 'phaser', enabled: true, params: { rate: 0.5, depth: 60, mix: 40 } }, // Phase 90
+            { type: 'delay', enabled: true, params: { model: 'tape', time: 300, feedback: 10, mix: 20 } },
+            { type: 'reverb', enabled: true, params: { model: 'plate', decay: 3, tone: 50, mix: 25 } }
+        ]
+    },
+    {
+        id: 'synyster_gates',
+        name: '🦇 Synyster',
+        description: 'Avenged Tone',
+        amp: { model: 'mesa_rectifier', params: { gain: 80, bass: 7, mid: 5, treble: 7, presence: 7, master: 60 } },
+        cabinet: { type: '4x12_closed', mic: 'close', mix: 95 },
+        effects: [
+            { type: 'compsustainer', enabled: true, params: { model: 'blue', threshold: -35, attack: 10, level: 60 } },
+            { type: 'chorus', enabled: true, params: { model: 'dim', rate: 0.4, depth: 50, mix: 30 } },
+            { type: 'reverb', enabled: true, params: { model: 'shimmer', decay: 5, tone: 70, mix: 40 } }
+        ]
+    },
+    {
+        id: 'paul_gilbert',
+        name: '🏎️ Racer X',
+        description: 'Technical Drill',
+        amp: { model: 'marshall_jcm800', params: { gain: 70, bass: 5, mid: 6, treble: 7, presence: 6, master: 75 } },
+        cabinet: { type: '4x12_closed', mic: 'close', mix: 95 },
+        effects: [
+            { type: 'distortion', enabled: true, params: { model: 'ds1', gain: 65, tone: 4000, mix: 100 } },
+            { type: 'chorus', enabled: true, params: { model: 'ce1', rate: 2.0, depth: 30, mix: 20 } }, // Flanger-ish
+            { type: 'delay', enabled: true, params: { model: 'digital', time: 350, feedback: 30, mix: 20 } }
+        ]
+    },
+    {
+        id: 'vito_bratta',
+        name: '🦁 White Lion',
+        description: 'Melodic Tapping',
+        amp: { model: 'soldano_slo', params: { gain: 75, bass: 6, mid: 6, treble: 7, presence: 6, master: 65 } },
+        cabinet: { type: '4x12_closed', mic: 'close', mix: 100 },
+        effects: [
+            { type: 'compressor', enabled: true, params: { model: 'studio', threshold: -20, ratio: 4, attack: 10 } },
+            { type: 'chorus', enabled: true, params: { model: 'tri', rate: 0.5, depth: 60, mix: 40 } },
+            { type: 'delay', enabled: true, params: { model: 'digital', time: 420, feedback: 35, mix: 30 } }
+        ]
+    },
+    {
+        id: 'marty_friedman',
+        name: '🌪️ Tornado',
+        description: 'Exotic Thrash Lead',
+        amp: { model: 'peavey_6505', params: { gain: 88, bass: 6, mid: 7, treble: 8, presence: 7, master: 60 } },
+        cabinet: { type: '4x12_closed', mic: 'close', mix: 100 },
+        effects: [
+            { type: 'distortion', enabled: true, params: { model: 'tube', gain: 40, tone: 6000, mix: 70 } }, // Boost
+            { type: 'eq', enabled: true, params: { model: 'vintage', low: 0, mid: 3, high: 2 } }, // Mid Boost
+            { type: 'reverb', enabled: true, params: { model: 'hall', decay: 3, tone: 50, mix: 20 } }
         ]
     }
 ];

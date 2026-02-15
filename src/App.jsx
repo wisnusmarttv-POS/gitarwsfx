@@ -14,7 +14,7 @@ import { initAudioEngine, connectInput, disconnectInput, buildSignalChain, setMa
 import { EFFECT_TYPES } from './audio/effects.js';
 import { createAmp, AMP_MODELS } from './audio/ampModels.js';
 import { createCabinet } from './audio/cabinetSim.js';
-import { getAllPresets, savePreset, deletePreset, exportPreset, importPreset, createPresetSnapshot } from './presets/presetManager.js';
+import { getAllPresets, savePreset, deletePreset, exportPreset, importPreset, createPresetSnapshot, renamePreset } from './presets/presetManager.js';
 import './index.css';
 
 const BANK_SIZE = 4;
@@ -50,6 +50,7 @@ function App() {
   const [cabType, setCabType] = useState('4x12_closed');
   const [micPos, setMicPos] = useState('close');
   const [cabMix, setCabMix] = useState(100);
+  const [cabEnabled, setCabEnabled] = useState(true);
   const cabRef = useRef(null);
 
   // Initialize
@@ -57,18 +58,48 @@ function App() {
     initAudioEngine();
     setPresets(getAllPresets());
 
-    const defaultEffects = EFFECT_TYPES.map((type, index) => {
-      const effect = type.create();
-      return {
-        id: `${type.id}_${index}`,
-        typeId: type.id,
-        effect,
-        enabled: false,
-        node: effect.node,
-        outputNode: effect.outputNode
-      };
+    // Initialize or Sync effects
+    // We check if we already have effects (from partial state? or previous init) 
+    // But since this is mount, usually we enable defaults. 
+    // To support adding new effect types during dev without full reset, we can merge.
+
+    setEffects(prev => {
+      const currentIds = new Set(prev.map(fx => fx.typeId));
+      const missingTypes = EFFECT_TYPES.filter(t => !currentIds.has(t.id));
+
+      if (prev.length === 0) {
+        // First init
+        return EFFECT_TYPES.map((type, index) => {
+          const effect = type.create();
+          return {
+            id: `${type.id}_${index}`,
+            typeId: type.id,
+            effect,
+            enabled: false,
+            node: effect.node,
+            outputNode: effect.outputNode
+          };
+        });
+      }
+
+      if (missingTypes.length > 0) {
+        // Append missing
+        const newEffects = missingTypes.map((type, index) => {
+          const effect = type.create();
+          return {
+            id: `${type.id}_${prev.length + index}`,
+            typeId: type.id,
+            effect,
+            enabled: false,
+            node: effect.node,
+            outputNode: effect.outputNode
+          };
+        });
+        return [...prev, ...newEffects];
+      }
+
+      return prev;
     });
-    setEffects(defaultEffects);
 
     const amp = createAmp('marshall_jcm800');
     ampRef.current = amp;
@@ -80,8 +111,12 @@ function App() {
 
   useEffect(() => {
     if (!isConnected) return;
-    buildSignalChain(effects, ampRef.current, cabRef.current);
-  }, [effects, isConnected, ampModelId, cabType, micPos, ampChannel]);
+    // Pass cabEnabled to buildSignalChain (need to update audioEngine too or handle here?)
+    // Actually, buildSignalChain takes 'cabinet' object. We can pass null if disabled, 
+    // or better yet, let's update buildSignalChain signature or logic to respect enabled flag.
+    // For now, let's pass cabRef.current only if enabled.
+    buildSignalChain(effects, ampRef.current, cabEnabled ? cabRef.current : null);
+  }, [effects, isConnected, ampModelId, cabType, micPos, ampChannel, cabEnabled]);
 
   const handleConnect = useCallback(async () => {
     await initAudioEngine();
@@ -173,12 +208,10 @@ function App() {
 
   // Preset Logic
   const handlePresetSelect = useCallback((presetId) => {
+    // ... logic same ...
     const preset = presets.find(p => p.id === presetId);
     if (!preset) return;
     setCurrentPresetId(presetId);
-
-    // Logic to select appropriate bank if loaded directly
-    // Not implemented for generic load, but handled in footswitch
 
     if (preset.amp) {
       const amp = createAmp(preset.amp.model, preset.amp.params);
@@ -190,6 +223,7 @@ function App() {
       setCabType(preset.cabinet.type);
       setMicPos(preset.cabinet.mic);
       setCabMix(preset.cabinet.mix);
+      setCabEnabled(preset.cabinet.enabled !== undefined ? preset.cabinet.enabled : true); // Default true
       const cab = createCabinet(preset.cabinet.type, preset.cabinet.mic, preset.cabinet.mix);
       cabRef.current = cab;
     }
@@ -208,6 +242,13 @@ function App() {
       });
     }
   }, [presets]);
+
+  const handleRenamePreset = useCallback((id, newName) => {
+    const updated = renamePreset(id, newName);
+    if (updated) {
+      setPresets(getAllPresets());
+    }
+  }, []);
 
   const handleSaveNewPreset = useCallback((name) => {
     const snapshot = createPresetSnapshot(
@@ -240,7 +281,7 @@ function App() {
         currentPreset.description,
         effects,
         { modelId: ampModelId, params: ampRef.current.params },
-        { cabinetId: cabType, micPosition: micPos, params: { mix: { value: cabMix } } },
+        { cabinetId: cabType, micPosition: micPos, params: { mix: { value: cabMix } }, enabled: cabEnabled },
         currentPresetId // Pass existing ID to overwrite
       );
       savePreset(snapshot);
@@ -328,7 +369,18 @@ function App() {
       );
     }
 
-    if (selectedBlockId === 'cab') return <CabinetPanel cabinetType={cabType} micPosition={micPos} mix={cabMix} onCabinetChange={handleCabChange} onMicChange={handleMicChange} onMixChange={handleCabMixChange} />;
+    if (selectedBlockId === 'cab') return (
+      <CabinetPanel
+        cabinetType={cabType}
+        micPosition={micPos}
+        mix={cabMix}
+        enabled={cabEnabled}
+        onCabinetChange={handleCabChange}
+        onMicChange={handleMicChange}
+        onMixChange={handleCabMixChange}
+        onToggle={() => setCabEnabled(prev => !prev)}
+      />
+    );
     if (selectedBlockId === 'input') return <div style={{ color: 'white', textAlign: 'center' }}><h3>INPUT / GATE</h3><p>Global Input Settings</p></div>;
     if (selectedBlockId === 'output') return <div style={{ color: 'white', textAlign: 'center' }}><h3>MASTER OUTPUT</h3><VUMeter analyser={getOutputAnalyser()} label="OUT" color="#4488ff" /></div>;
 
@@ -380,6 +432,18 @@ function App() {
           <h1>JAGAT<span>FX</span> <span className="logo-subtitle">by Wisnu Wardana</span></h1>
         </div>
         <div className="header-controls">
+          <a
+            href="https://www.tiktok.com/@wardana2508?is_from_webapp=1&sender_device=pc"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: 'flex', alignItems: 'center', marginRight: '15px', color: 'white', textDecoration: 'none' }}
+            title="Follow on TikTok"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+              <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V0h-3.45v13.67a6.43 6.43 0 1 1-6.43-6.42 6.43 6.43 0 0 1 1 .09v3.45a3 3 0 1 0 1.93 2.87V0h3.48a4.81 4.81 0 0 0 \
+              1.25-.17 7.79 7.79 0 0 1 3.74 1.96V5.7a4.39 4.39 0 0 0-1.2 1z"/>
+            </svg>
+          </a>
           <button className={`tuner-btn ${showTuner ? 'active' : ''}`} onClick={() => setShowTuner(true)}>
             TUNER
           </button>
@@ -424,9 +488,11 @@ function App() {
                   cabinetType={cabType}
                   micPosition={micPos}
                   mix={cabMix}
+                  enabled={cabEnabled}
                   onCabinetChange={handleCabChange}
                   onMicChange={handleMicChange}
                   onMixChange={handleCabMixChange}
+                  onToggle={() => setCabEnabled(prev => !prev)}
                   compact={true}
                 />
               </div>
@@ -469,11 +535,15 @@ function App() {
             <SignalChain
               effects={effects}
               amp={{ model: ampModelId }}
-              cabinet={{ type: cabType }}
+              cabinet={{ type: cabType, enabled: cabEnabled }}
               selectedBlockId={selectedBlockId}
               onSelectBlock={handleBlockSelect}
               onToggleBlock={(id) => {
-                if (id === 'amp' || id === 'cab') return; // Can't bypass amp logic yet in this fn
+                if (id === 'amp') return;
+                if (id === 'cab') {
+                  setCabEnabled(prev => !prev);
+                  return;
+                }
                 handleToggleEffect(id);
               }}
             />
@@ -489,6 +559,7 @@ function App() {
             onSave={handleSaveNewPreset}
             onDelete={handleDeletePreset}
             onOverwrite={handleOverwritePreset}
+            onRename={handleRenamePreset}
           />
         </div>
       </div>

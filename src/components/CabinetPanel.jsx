@@ -1,15 +1,32 @@
 import Knob from './Knob.jsx';
 import { CABINET_TYPES, MIC_POSITIONS } from '../audio/cabinetSim.js';
 
-export default function CabinetPanel({ cabinetType, micPosition, mix, onCabinetChange, onMicChange, onMixChange, compact = false }) {
+export default function CabinetPanel({ cabinetType, micPosition, mix, enabled = true, onCabinetChange, onMicChange, onMixChange, onToggle, compact = false }) {
     const cab = CABINET_TYPES.find(c => c.id === cabinetType) || CABINET_TYPES[0];
 
     return (
-        <div className={`cabinet-panel ${compact ? 'compact' : ''}`}>
+        <div className={`cabinet-panel ${compact ? 'compact' : ''} ${!enabled ? 'bypassed' : ''}`}>
             {!compact && (
-                <div className="cabinet-header">
-                    <span className="cabinet-icon">{cab.icon}</span>
-                    <h3>CABINET</h3>
+                <div className="cabinet-header" style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span className="cabinet-icon">{cab.icon}</span>
+                        <h3>CABINET</h3>
+                    </div>
+                    {onToggle && (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onToggle(); }}
+                            style={{
+                                background: enabled ? '#44ff44' : '#555',
+                                border: 'none',
+                                borderRadius: '50%',
+                                width: '20px',
+                                height: '20px',
+                                cursor: 'pointer',
+                                boxShadow: enabled ? '0 0 10px #44ff44' : 'none'
+                            }}
+                            title={enabled ? "Bypass" : "Enable"}
+                        />
+                    )}
                 </div>
             )}
 

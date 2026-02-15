@@ -371,6 +371,11 @@ body {
   min-width: 250px;
 }
 
+.cabinet-panel.bypassed {
+  opacity: 0.5;
+  filter: grayscale(0.8);
+}
+
 /* SIGNAL CHAIN STRIP */
 .signal-chain-strip {
   background-color: var(--bg-panel);
@@ -390,8 +395,10 @@ body {
 }
 
 .chain-node {
-  background: #222;
+  background: linear-gradient(145deg, #222, #1a1a1a);
   border: 1px solid #444;
+  border-bottom: 2px solid var(--block-color);
+  /* Colorful bottom border */
   border-radius: 6px;
   width: 70px;
   height: 90px;
@@ -403,29 +410,38 @@ body {
   cursor: pointer;
   transition: all 0.2s;
   position: relative;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
 }
 
 .chain-node:hover {
-  border-color: #666;
   transform: translateY(-2px);
+  box-shadow: 0 0 15px color-mix(in srgb, var(--block-color) 20%, transparent);
+  border-color: var(--block-color);
 }
 
 .chain-node.selected {
-  border-color: var(--accent-blue);
-  box-shadow: 0 0 15px rgba(61, 139, 255, 0.3);
-  background: #2a2a35;
+  border: 1px solid var(--block-color);
+  box-shadow: 0 0 20px color-mix(in srgb, var(--block-color) 40%, transparent);
+  background: linear-gradient(145deg, #2a2a35, #1f1f25);
 }
 
 .chain-node.bypassed {
-  opacity: 0.6;
+  opacity: 0.5;
+  filter: grayscale(0.8);
 }
 
-.chain-node.bypassed.selected {
+.chain-node.bypassed:hover {
+  filter: grayscale(0);
   opacity: 1;
 }
 
+.chain-node.bypassed.selected {
+  opacity: 0.8;
+  filter: grayscale(0);
+}
+
 .node-icon-area {
-  background: #151515;
+  background: #111;
   width: 50px;
   height: 50px;
   border-radius: 4px;
@@ -435,20 +451,30 @@ body {
   justify-content: center;
   border: 1px solid #333;
   position: relative;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
 }
 
 .node-icon-area .icon-badge {
-  width: 30px;
-  height: 30px;
-  border-radius: 4px;
+  width: 100%;
+  height: 100%;
+  border-radius: 3px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 9px;
-  font-weight: bold;
-  color: #fff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  font-size: 10px;
+  font-weight: 800;
+  color: #000;
+  text-shadow: none;
+  background: var(--block-color);
+  /* Always colored */
+  opacity: 0.8;
 }
+
+.chain-node.selected .icon-badge {
+  opacity: 1;
+  box-shadow: 0 0 10px var(--block-color);
+}
+
 
 .node-led {
   width: 6px;
@@ -467,18 +493,29 @@ body {
 }
 
 /* RIGHT SIDEBAR (PRESETS) */
-.patch-list-container {
+.preset-sidebar {
   background-color: var(--bg-panel);
   border-left: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   height: 100%;
+  overflow: hidden;
+  /* Ensure content stays within bounds */
+}
+
+.patch-list-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
 }
 
 .patch-list-header {
   padding: 15px;
   border-bottom: 2px solid var(--accent-blue);
   background: rgba(0, 0, 0, 0.2);
+  flex-shrink: 0;
+  /* Keep header fixed */
 }
 
 .patch-list-header h3 {
@@ -493,6 +530,9 @@ body {
 .patch-list-scroll {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
+  /* Crucial for flex scrolling */
+  padding-bottom: 20px;
 }
 
 .patch-item {

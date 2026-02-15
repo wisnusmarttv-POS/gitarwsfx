@@ -32,6 +32,8 @@ export default function SignalChain({
             case 'noisegate': return '#32CD32'; // Lime Green
             case 'tremolo': return '#8A2BE2'; // Blue Violet
             case 'phaser': return '#FF1493'; // Deep Pink
+            case 'compSustainer': return '#00BFFF'; // Deep Sky Blue (More vibrant than #0099CC)
+            case 'stringEnsemble': return '#FFD700'; // Gold/Yellow (Vibrant)
             // Add more as needed
             default: return type ? (type.color || '#555') : '#999';
         }
@@ -90,8 +92,8 @@ export default function SignalChain({
                 {/* Cab */}
                 {renderBlock(
                     'cab', 'cab', 'CAB',
-                    selectedBlockId === 'cab', true,
-                    () => onSelectBlock('cab'), () => { }
+                    selectedBlockId === 'cab', cabinet.enabled !== undefined ? cabinet.enabled : true,
+                    () => onSelectBlock('cab'), () => onToggleBlock('cab')
                 )}
 
                 {/* VOL/Output (Placeholder for now) */}
