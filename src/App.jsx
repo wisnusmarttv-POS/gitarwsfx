@@ -29,12 +29,13 @@ function App() {
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const [selectedOutputId, setSelectedOutputId] = useState('');
   // Channel Selection: 'mix', 0 (Left), or 1 (Right)
-  const [selectedChannel, setSelectedChannel] = useState('mix');
+  const [selectedChannel, setSelectedChannel] = useState(0);
   const [diagnostics, setDiagnostics] = useState({});
   const [showTuner, setShowTuner] = useState(false);
   const [isTestToneActive, setIsTestToneActive] = useState(false);
   const [masterVol, setMasterVol] = useState(40);
-  const [inputGain, setInputGainState] = useState(100);
+  const [inputGain, setInputGainState] = useState(50);
+  const [gateThreshold, setGateThresholdState] = useState(-60);
   const [bypass, setBypass] = useState(false);
   const [presets, setPresets] = useState([]);
   const [currentPresetId, setCurrentPresetId] = useState(null);
@@ -133,17 +134,58 @@ function App() {
       cabRef.current = cab;
     }
 
-    const success = await connectInput(selectedDeviceId);
+    // Step 1: Get mic permission first with a temp stream to enumerate devices
+    let tempStream = null;
+    try {
+      tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      console.error('Mic permission denied:', err);
+      return;
+    }
+
+    // Step 2: Enumerate devices (now we have permission, labels will be available)
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const audioInputs = devices.filter(d => d.kind === 'audioinput');
+    const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+    setInputDevices(audioInputs);
+    setOutputDevices(audioOutputs);
+
+    // Stop temp stream immediately
+    tempStream.getTracks().forEach(t => t.stop());
+
+    // Step 3: Auto-select best device (prefer external/USB over built-in)
+    let bestDeviceId = selectedDeviceId;
+    if (!bestDeviceId || bestDeviceId === '') {
+      // Try to find an external audio interface (USB, external, line-in)
+      const externalDevice = audioInputs.find(d => {
+        const label = (d.label || '').toLowerCase();
+        return label.includes('usb') || label.includes('interface') ||
+          label.includes('line') || label.includes('audio') ||
+          label.includes('scarlett') || label.includes('focusrite') ||
+          label.includes('behringer') || label.includes('steinberg') ||
+          label.includes('presonus') || label.includes('m-audio') ||
+          label.includes('asio') || label.includes('external');
+      });
+
+      if (externalDevice) {
+        bestDeviceId = externalDevice.deviceId;
+        setSelectedDeviceId(bestDeviceId);
+        console.log('Auto-selected external device:', externalDevice.label);
+      } else if (audioInputs.length > 0) {
+        // If no external found, just use the first device  
+        bestDeviceId = audioInputs[0].deviceId;
+        setSelectedDeviceId(bestDeviceId);
+        console.log('Using first available device:', audioInputs[0].label);
+      }
+    }
+
+    // Step 4: Connect to the selected device
+    const success = await connectInput(bestDeviceId, selectedChannel);
     if (success) {
       setIsConnected(true);
-      // Fetch devices now that we have permission
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const audioInputs = devices.filter(d => d.kind === 'audioinput');
-      const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
-      setInputDevices(audioInputs);
-      setOutputDevices(audioOutputs);
+      console.log('Connected to device:', bestDeviceId);
     }
-  }, [selectedDeviceId, ampModelId, cabType, micPos, cabMix]);
+  }, [selectedDeviceId, selectedChannel, ampModelId, cabType, micPos, cabMix]);
 
   const handleDisconnect = useCallback(() => {
     disconnectInput();
@@ -457,6 +499,15 @@ function App() {
     return <div className="empty-edit" style={{ color: '#555' }}>SELECT BLOCK</div>;
   };
 
+  const handleGateThreshold = useCallback((val) => {
+    setGateThresholdState(prev => {
+      // Ensure value is between -80 and 0
+      const newVal = Math.max(-80, Math.min(0, val));
+      setInputGateThreshold(newVal);
+      return newVal;
+    });
+  }, []);
+
   // Render
   return (
     <div className="app-editor-container">
@@ -482,17 +533,19 @@ function App() {
 
           </div>
 
-          {/* Device Selector */}
-          {isConnected && inputDevices.length > 0 && (
+          {/* Device Selector - show when devices are available */}
+          {inputDevices.length > 0 && (
             <>
               <select
                 value={selectedDeviceId}
                 onChange={async (e) => {
                   const newId = e.target.value;
                   setSelectedDeviceId(newId);
-                  await disconnectInput();
-                  const success = await connectInput(newId, selectedChannel);
-                  if (success) setIsConnected(true);
+                  if (isConnected) {
+                    await disconnectInput();
+                    const success = await connectInput(newId, selectedChannel);
+                    if (success) setIsConnected(true);
+                  }
                 }}
                 style={{
                   marginRight: '10px',
@@ -517,9 +570,11 @@ function App() {
                 onChange={async (e) => {
                   const newChannel = e.target.value === 'mix' ? 'mix' : Number(e.target.value);
                   setSelectedChannel(newChannel);
-                  await disconnectInput();
-                  const success = await connectInput(selectedDeviceId, newChannel);
-                  if (success) setIsConnected(true);
+                  if (isConnected) {
+                    await disconnectInput();
+                    const success = await connectInput(selectedDeviceId, newChannel);
+                    if (success) setIsConnected(true);
+                  }
                 }}
                 style={{
                   marginRight: '10px',
@@ -560,19 +615,17 @@ function App() {
               <option value="">Default Output</option>
               {outputDevices.map(device => (
                 <option key={device.deviceId} value={device.deviceId}>
-                  {device.label || `Out ${device.deviceId.slice(0, 5)}...`}
+                  {device.label || `Output ${device.deviceId.slice(0, 5)}...`}
                 </option>
               ))}
             </select>
           )}
 
+          <div style={{ width: '1px', height: '30px', backgroundColor: '#444', margin: '0 15px' }} />
+
           <button
             className={`bypass-btn ${bypass ? 'active' : ''}`}
-            onClick={() => {
-              const newBypass = !bypass;
-              setBypass(newBypass);
-              setGlobalBypass(newBypass);
-            }}
+            onClick={handleBypassToggle}
             style={{
               backgroundColor: bypass ? '#ffaa00' : '#333',
               color: bypass ? 'black' : 'white',
@@ -633,6 +686,8 @@ function App() {
             onVolumeChange={handleVolume}
             onInputGainChange={handleInputGain}
             onBypassToggle={handleBypassToggle}
+            gateThreshold={gateThreshold}
+            onGateThresholdChange={handleGateThreshold}
           />
         </div>
       </header>

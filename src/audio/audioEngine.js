@@ -18,6 +18,13 @@ let dryGain = null;
 let testOsc = null;
 let testGain = null;
 let inputGainNode = null; // Stores the mono summing node from connectInput
+let inputHighPass = null; // High-pass filter to block hum
+
+// Built-in input noise gate
+let inputGateNode = null;
+let inputGateAnalyser = null;
+let inputGateFrame = null;
+let inputGateThreshold = -70; // dB threshold - lowered further to prevent cutting off sustain
 
 export function getAudioContext() {
   if (!audioContext) {
@@ -37,15 +44,15 @@ export async function initAudioEngine() {
 
   // Create wet gain for effect chain output
   wetGain = ctx.createGain();
-  wetGain.gain.value = 1; // Default Active (Normal Mode)
+  wetGain.gain.value = 1;
 
-  // Dry gain for bypass (signal bypasses effects)
+  // Dry gain for bypass
   dryGain = ctx.createGain();
-  dryGain.gain.value = 0; // Default Muted (Normal Mode)
+  dryGain.gain.value = 0;
 
   // Connect both paths to Master
   dryGain.connect(masterGain);
-  wetGain.connect(masterGain); // Wet Chain -> Master
+  wetGain.connect(masterGain);
 
   // Create analysers for VU meters
   analyserInput = ctx.createAnalyser();
@@ -64,7 +71,7 @@ export async function initAudioEngine() {
 }
 
 export async function getAudioInputDevices() {
-  const ctx = getAudioContext(); // Ensure context created
+  const ctx = getAudioContext();
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
     return devices.filter(d => d.kind === 'audioinput');
@@ -102,7 +109,7 @@ export async function setAudioOutputDevice(deviceId) {
 }
 
 
-export async function connectInput(deviceId = null, channel = 'mix') {
+export async function connectInput(deviceId = null, channel = 0) {
   const ctx = getAudioContext();
 
   if (ctx.state === 'suspended') {
@@ -116,36 +123,94 @@ export async function connectInput(deviceId = null, channel = 'mix') {
         echoCancellation: false,
         noiseSuppression: false,
         autoGainControl: false,
-        latencyHint: 'interactive'
+        channelCount: { ideal: 2 }
       }
     });
 
+    console.log('Got media stream, tracks:', mediaStream.getAudioTracks().length);
+    const track = mediaStream.getAudioTracks()[0];
+    const settings = track.getSettings();
+    console.log('Track settings:', settings);
+
     inputNode = ctx.createMediaStreamSource(mediaStream);
 
-    // Channel Routing
-    const splitter = ctx.createChannelSplitter(2);
+    // Channel Routing - handle both mono and stereo inputs
+    const numChannels = settings.channelCount || 1;
     const monoGain = ctx.createGain();
-    inputGainNode = monoGain; // Store reference
+    monoGain.gain.value = 1.0; // Restored to 100% for proper drive
+    inputGainNode = monoGain;
 
-    inputNode.connect(splitter);
+    if (numChannels >= 2) {
+      const splitter = ctx.createChannelSplitter(2);
+      inputNode.connect(splitter);
 
-    if (channel === 'mix') {
-      // Sum L+R (Default)
-      splitter.connect(monoGain, 0);
-      splitter.connect(monoGain, 1);
-      console.log(`Audio Input: ${mediaStream.id} (Stereo Mix)`);
-    } else if (channel === 0) {
-      // Left Channel Only (Input 1)
-      splitter.connect(monoGain, 0);
-      console.log(`Audio Input: ${mediaStream.id} (Left/Input 1 Only)`);
-    } else if (channel === 1) {
-      // Right Channel Only (Input 2)
-      splitter.connect(monoGain, 1);
-      console.log(`Audio Input: ${mediaStream.id} (Right/Input 2 Only)`);
+      if (channel === 'mix') {
+        splitter.connect(monoGain, 0);
+        splitter.connect(monoGain, 1);
+        console.log('Audio Input: Stereo Mix');
+      } else if (channel === 0) {
+        splitter.connect(monoGain, 0);
+        console.log('Audio Input: Left/Input 1 Only');
+      } else if (channel === 1) {
+        splitter.connect(monoGain, 1);
+        console.log('Audio Input: Right/Input 2 Only');
+      }
+    } else {
+      inputNode.connect(monoGain);
+      console.log('Audio Input: Mono (single channel)');
     }
 
-    // Connect summed/selected signal to input analyser and chain
-    monoGain.connect(analyserInput);
+    // === Input cleanup filters ===
+    inputHighPass = ctx.createBiquadFilter();
+    inputHighPass.type = 'highpass';
+    inputHighPass.frequency.value = 80;
+    inputHighPass.Q.value = 0.7;
+
+    const notch50 = ctx.createBiquadFilter();
+    notch50.type = 'notch';
+    notch50.frequency.value = 50;
+    notch50.Q.value = 5; // Wider notch (Q=5) to catch drifting hum
+
+    const notch60 = ctx.createBiquadFilter();
+    notch60.type = 'notch';
+    notch60.frequency.value = 60;
+    notch60.Q.value = 5;
+
+    const notch100 = ctx.createBiquadFilter();
+    notch100.type = 'notch';
+    notch100.frequency.value = 100;
+    notch100.Q.value = 10;
+
+    const notch150 = ctx.createBiquadFilter();
+    notch150.type = 'notch';
+    notch150.frequency.value = 150;
+    notch150.Q.value = 10;
+
+    // === Built-in noise gate DISABLED (Causing signal cutouts) ===
+    // We will rely on the Pedal Noise Gate which has visual controls
+    inputGateNode = ctx.createGain();
+    inputGateNode.gain.value = 1.0; // Always open by default
+    inputGateAnalyser = ctx.createAnalyser();
+    inputGateAnalyser.fftSize = 256;
+
+    // Disable internal gate processing to stop signal cutting
+    /* 
+    const gateDataArray = new Float32Array(inputGateAnalyser.fftSize);
+    function processInputGate() {
+      // ... disabled ...
+      inputGateFrame = requestAnimationFrame(processInputGate);
+    } 
+    processInputGate(); 
+    */
+
+    // Chain: monoGain -> highPass -> notch50 -> notch100 -> notch150 -> gateAnalyser + gateNode -> analyserInput
+    monoGain.connect(inputHighPass);
+    inputHighPass.connect(notch50);
+    notch50.connect(notch100);
+    notch100.connect(notch150);
+    notch150.connect(inputGateAnalyser);
+    notch150.connect(inputGateNode);
+    inputGateNode.connect(analyserInput);
 
     return true;
   } catch (err) {
@@ -163,6 +228,22 @@ export function disconnectInput() {
     try { inputGainNode.disconnect(); } catch (e) { }
     inputGainNode = null;
   }
+  if (inputHighPass) {
+    try { inputHighPass.disconnect(); } catch (e) { }
+    inputHighPass = null;
+  }
+  if (inputGateNode) {
+    try { inputGateNode.disconnect(); } catch (e) { }
+    inputGateNode = null;
+  }
+  if (inputGateAnalyser) {
+    try { inputGateAnalyser.disconnect(); } catch (e) { }
+    inputGateAnalyser = null;
+  }
+  if (inputGateFrame) {
+    cancelAnimationFrame(inputGateFrame);
+    inputGateFrame = null;
+  }
   if (mediaStream) {
     mediaStream.getTracks().forEach(track => track.stop());
     mediaStream = null;
@@ -171,9 +252,13 @@ export function disconnectInput() {
 
 export function setInputVolume(value) {
   if (inputGainNode) {
-    // Value 0-2 (0% to 200%)
     inputGainNode.gain.setTargetAtTime(value, getAudioContext().currentTime, 0.01);
   }
+}
+
+export function setInputGateThreshold(value) {
+  // value: -80 to 0 dB
+  inputGateThreshold = value;
 }
 
 export function buildSignalChain(effects, amp, cabinet) {
@@ -192,10 +277,9 @@ export function buildSignalChain(effects, amp, cabinet) {
   console.log('  effects count:', effects?.length, '| enabled:', effects?.filter(e => e.enabled).length);
 
   // SAFE DISCONNECT: analyserInput.disconnect() only removes OUTGOING connections.
-  // The incoming connection (monoGain -> analyserInput) remains intact.
   analyserInput.disconnect();
 
-  // Rebuild dry path (for bypass mode)
+  // Rebuild dry path
   analyserInput.connect(dryGain);
   dryGain.disconnect();
   dryGain.connect(masterGain);
@@ -204,17 +288,23 @@ export function buildSignalChain(effects, amp, cabinet) {
   wetGain.disconnect();
   wetGain.connect(masterGain);
 
-  // Build wet chain: analyserInput -> [effects] -> [amp] -> [cabinet] -> wetGain
+  // Build wet chain: analyserInput -> [noisegate FIRST] -> [effects] -> [amp] -> [cabinet] -> wetGain
   let lastNode = analyserInput;
 
-  // Pre-cab effects (everything except noisegate)
-  const preCabEffects = effects.filter(e => e.node && e.enabled && e.typeId !== 'noisegate');
-  const postCabEffects = effects.filter(e => e.node && e.enabled && e.typeId === 'noisegate');
-
-  preCabEffects.forEach(effect => {
+  // NOISE GATE FIRST - before any gain stages to prevent noise amplification
+  const gateEffects = effects.filter(e => e.node && e.enabled && e.typeId === 'noisegate');
+  gateEffects.forEach(effect => {
     lastNode.connect(effect.node);
     lastNode = effect.outputNode || effect.node;
-    console.log('  -> Pre-Cab Effect:', effect.typeId);
+    console.log('  -> Noise Gate (PRE-EFFECTS)');
+  });
+
+  // Then other effects (distortion, delay, chorus, etc)
+  const otherEffects = effects.filter(e => e.node && e.enabled && e.typeId !== 'noisegate');
+  otherEffects.forEach(effect => {
+    lastNode.connect(effect.node);
+    lastNode = effect.outputNode || effect.node;
+    console.log('  -> Effect:', effect.typeId);
   });
 
   // Amp
@@ -233,13 +323,6 @@ export function buildSignalChain(effects, amp, cabinet) {
     console.log('  -> Cabinet:', cabinet.cabinetId);
   }
 
-  // Post-cab effects (noisegate)
-  postCabEffects.forEach(effect => {
-    lastNode.connect(effect.node);
-    lastNode = effect.outputNode || effect.node;
-    console.log('  -> Post-Cab Effect:', effect.typeId);
-  });
-
   // Final: connect to wet output
   lastNode.connect(wetGain);
 
@@ -247,7 +330,6 @@ export function buildSignalChain(effects, amp, cabinet) {
 }
 
 export function setAmpParams(params) {
-  // If ampNode exists and has updateParams method
   if (ampNode && ampNode.updateParams) {
     ampNode.updateParams(params);
   }
@@ -264,13 +346,11 @@ export function setGlobalBypass(bypassed) {
     const ctx = getAudioContext();
     const now = ctx.currentTime;
     if (bypassed) {
-      // Bypass Mode: Hear Clean Only
-      dryGain.gain.setTargetAtTime(1, now, 0.01);     // Open Dry Path
-      wetGain.gain.setTargetAtTime(0, now, 0.01);     // Mute Wet Path
+      dryGain.gain.setTargetAtTime(1, now, 0.01);
+      wetGain.gain.setTargetAtTime(0, now, 0.01);
     } else {
-      // Normal Mode
-      dryGain.gain.setTargetAtTime(0, now, 0.01);     // Mute Dry Path
-      wetGain.gain.setTargetAtTime(1, now, 0.01);     // Open Wet Path
+      dryGain.gain.setTargetAtTime(0, now, 0.01);
+      wetGain.gain.setTargetAtTime(1, now, 0.01);
     }
   }
 }
@@ -292,12 +372,11 @@ export function toggleTestTone(enabled) {
       if (analyserInput) {
         testGain.connect(analyserInput);
       }
-      // Also connect directly to masterGain so test tone works without input connected
       if (masterGain) {
         testGain.connect(masterGain);
       }
       testOsc.start();
-      console.log('Test Tone ON: analyserInput:', !!analyserInput, '| masterGain:', !!masterGain);
+      console.log('Test Tone ON');
     }
   } else {
     if (testOsc) {
@@ -328,6 +407,7 @@ export function getDiagnostics() {
     inputConnected: !!inputNode,
     testOsc: !!testOsc,
     analyserIn: analyserInput ? 'active' : 'null',
-    analyserOut: analyserOutput ? 'active' : 'null'
+    analyserOut: analyserOutput ? 'active' : 'null',
+    inputGateThreshold: inputGateThreshold
   };
 }

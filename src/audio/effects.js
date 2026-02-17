@@ -50,9 +50,8 @@ export function createDistortion(params = {}) {
     const tone = params.tone ?? currentModel.toneFreq;
     const mix = params.mix ?? 80;
 
-    // Fix: Boost pedal gain significantly.
-    // Old: gain / 10. New: gain * 0.5 (max 50x)
-    preGain.gain.value = 1 + (gain * 0.5);
+    // Pre-gain: map 0-100 to 1x-16x (reduced from 51x to prevent noise amplification)
+    preGain.gain.value = 1 + (gain * 0.15);
     updateCurve(currentModel, gain);
     waveshaper.oversample = '4x';
 
@@ -72,8 +71,8 @@ export function createDistortion(params = {}) {
     dryGain.connect(output);
 
     function updateCurve(model, gainVal) {
-        // Adjust amount because input is now much hotter
-        const amount = (gainVal * model.gainMult) / 5;
+        // Curve amount boosted back for richer distortion (noise gate handles the silence now)
+        const amount = (gainVal * model.gainMult) / 8;
         switch (model.type) {
             case 'hard': waveshaper.curve = makeHardClipCurve(amount); break;
             case 'fuzz': waveshaper.curve = makeFuzzCurve(amount); break;
@@ -109,7 +108,7 @@ export function createDistortion(params = {}) {
                 updateCurve(currentModel, this.params.gain.value);
             }
             if (p.gain !== undefined) {
-                preGain.gain.setTargetAtTime(1 + (p.gain * 0.5), ctx.currentTime, 0.01);
+                preGain.gain.setTargetAtTime(1 + (p.gain * 0.15), ctx.currentTime, 0.01);
                 updateCurve(currentModel, p.gain);
                 this.params.gain.value = p.gain;
             }
@@ -701,7 +700,7 @@ export function createNoiseGate(params = {}) {
     const gate = ctx.createGain();
     const analyser = ctx.createAnalyser();
 
-    const threshold = params.threshold ?? -40;
+    const threshold = params.threshold ?? -65; // Lowered from -40 to prevent cutting
 
     analyser.fftSize = 256;
     gate.gain.value = 1;
@@ -720,7 +719,16 @@ export function createNoiseGate(params = {}) {
         rms = 10 * Math.log10(rms / dataArray.length);
 
         const currentThreshold = params._currentThreshold ?? threshold;
-        gate.gain.setTargetAtTime(rms > currentThreshold ? 1 : 0, ctx.currentTime, 0.005);
+
+        // Improved Enveloping: Fast Attack, Slow Release
+        if (rms > currentThreshold) {
+            // Open fast (10ms) to catch transients
+            gate.gain.setTargetAtTime(1, ctx.currentTime, 0.01);
+        } else {
+            // Close slow (100ms) to sustain tails and avoid chopping
+            gate.gain.setTargetAtTime(0, ctx.currentTime, 0.1);
+        }
+
         animFrame = requestAnimationFrame(processGate);
     }
     processGate();

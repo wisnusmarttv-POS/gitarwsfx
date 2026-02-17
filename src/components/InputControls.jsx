@@ -11,7 +11,10 @@ export default function InputControls({
     onDisconnect,
     onVolumeChange,
     onInputGainChange,
-    onBypassToggle
+
+    onBypassToggle,
+    gateThreshold,
+    onGateThresholdChange
 }) {
     return (
         <div className="input-controls">
