@@ -7,7 +7,7 @@ export default function AmpPanel({ currentModel, params, channel, onModelChange,
     return (
         <div className={`amp-panel ${compact ? 'compact' : ''}`}>
             <div className="amp-header">
-                {!compact && (
+                {!compact && model && (
                     <div className="amp-logo">
                         <span className="amp-icon">{model.icon}</span>
                         <h3>AMP HEAD</h3>
@@ -25,7 +25,7 @@ export default function AmpPanel({ currentModel, params, channel, onModelChange,
                 </select>
             </div>
 
-            {!compact && <div className="amp-description">{model.description}</div>}
+            {!compact && model && <div className="amp-description">{model.description}</div>}
 
             <div className="amp-channels">
                 {AMP_CHANNELS.map(ch => (
@@ -56,7 +56,7 @@ export default function AmpPanel({ currentModel, params, channel, onModelChange,
                 ))}
             </div>
 
-            {!compact && <div className="amp-badge">{model.name}</div>}
+            {!compact && model && <div className="amp-badge">{model.name}</div>}
         </div>
     );
 }

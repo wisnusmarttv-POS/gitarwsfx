@@ -9,7 +9,7 @@ export default function CabinetPanel({ cabinetType, micPosition, mix, enabled = 
             {!compact && (
                 <div className="cabinet-header" style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span className="cabinet-icon">{cab.icon}</span>
+                        <span className="cabinet-icon">{cab ? cab.icon : '🔈'}</span>
                         <h3>CABINET</h3>
                     </div>
                     {onToggle && (

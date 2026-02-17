@@ -9,8 +9,9 @@ import SignalChain from './components/SignalChain.jsx';
 import Knob from './components/Knob.jsx';
 import VUMeter from './components/VUMeter.jsx';
 import PatchList from './components/PatchList.jsx';
+import InputControls from './components/InputControls.jsx';
 import Tuner from './components/Tuner.jsx';
-import { initAudioEngine, connectInput, disconnectInput, buildSignalChain, setMasterVolume, setGlobalBypass, getInputAnalyser, getOutputAnalyser } from './audio/audioEngine.js';
+import { initAudioEngine, connectInput, disconnectInput, buildSignalChain, setAmpParams, setMasterVolume, setGlobalBypass, toggleTestTone, getAudioContext, getOutputAnalyser, getInputAnalyser, setAudioOutputDevice, getDiagnostics, setInputVolume } from './audio/audioEngine';
 import { EFFECT_TYPES } from './audio/effects.js';
 import { createAmp, AMP_MODELS } from './audio/ampModels.js';
 import { createCabinet } from './audio/cabinetSim.js';
@@ -20,9 +21,20 @@ import './index.css';
 const BANK_SIZE = 4;
 
 function App() {
+  // alert('2. APP COMPONENT START');
   const [isConnected, setIsConnected] = useState(false);
+  const [inputDevices, setInputDevices] = useState([]);
+
+  const [outputDevices, setOutputDevices] = useState([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState('');
+  const [selectedOutputId, setSelectedOutputId] = useState('');
+  // Channel Selection: 'mix', 0 (Left), or 1 (Right)
+  const [selectedChannel, setSelectedChannel] = useState('mix');
+  const [diagnostics, setDiagnostics] = useState({});
   const [showTuner, setShowTuner] = useState(false);
-  const [masterVol, setMasterVol] = useState(80);
+  const [isTestToneActive, setIsTestToneActive] = useState(false);
+  const [masterVol, setMasterVol] = useState(40);
+  const [inputGain, setInputGainState] = useState(100);
   const [bypass, setBypass] = useState(false);
   const [presets, setPresets] = useState([]);
   const [currentPresetId, setCurrentPresetId] = useState(null);
@@ -53,76 +65,85 @@ function App() {
   const [cabEnabled, setCabEnabled] = useState(true);
   const cabRef = useRef(null);
 
-  // Initialize
+  // Initialize - Only load presets and UI placeholders (NO AudioContext here)
   useEffect(() => {
-    initAudioEngine();
+    console.log('App v2.1 Loaded - AudioContext Creation Deferred');
     setPresets(getAllPresets());
 
-    // Initialize or Sync effects
-    // We check if we already have effects (from partial state? or previous init) 
-    // But since this is mount, usually we enable defaults. 
-    // To support adding new effect types during dev without full reset, we can merge.
-
-    setEffects(prev => {
-      const currentIds = new Set(prev.map(fx => fx.typeId));
-      const missingTypes = EFFECT_TYPES.filter(t => !currentIds.has(t.id));
-
-      if (prev.length === 0) {
-        // First init
-        return EFFECT_TYPES.map((type, index) => {
-          const effect = type.create();
-          return {
-            id: `${type.id}_${index}`,
-            typeId: type.id,
-            effect,
-            enabled: false,
-            node: effect.node,
-            outputNode: effect.outputNode
-          };
-        });
-      }
-
-      if (missingTypes.length > 0) {
-        // Append missing
-        const newEffects = missingTypes.map((type, index) => {
-          const effect = type.create();
-          return {
-            id: `${type.id}_${prev.length + index}`,
-            typeId: type.id,
-            effect,
-            enabled: false,
-            node: effect.node,
-            outputNode: effect.outputNode
-          };
-        });
-        return [...prev, ...newEffects];
-      }
-
-      return prev;
-    });
-
-    const amp = createAmp('marshall_jcm800');
-    ampRef.current = amp;
-    setAmpParams({ ...amp.params });
-
-    const cab = createCabinet('4x12_closed', 'close', 100);
-    cabRef.current = cab;
+    // Create placeholder effect entries for UI (no audio nodes yet)
+    // Enable Noise Gate by default to help with high-gain hum
+    setEffects(EFFECT_TYPES.map((type, index) => ({
+      id: `${type.id}_${index}`,
+      typeId: type.id,
+      effect: { name: type.name, color: '#666', params: {}, update: () => { } },
+      enabled: type.id === 'noisegate', // Default enable Noise Gate
+      node: null,
+      outputNode: null
+    })));
   }, []);
 
+  // Build signal chain when connected and dependencies change
   useEffect(() => {
     if (!isConnected) return;
-    // Pass cabEnabled to buildSignalChain (need to update audioEngine too or handle here?)
-    // Actually, buildSignalChain takes 'cabinet' object. We can pass null if disabled, 
-    // or better yet, let's update buildSignalChain signature or logic to respect enabled flag.
-    // For now, let's pass cabRef.current only if enabled.
+
+    // Ensure Amp exists (Safety Check)
+    if (!ampRef.current) {
+      console.warn('AmpRef was null during build. Creating default amp.');
+      const amp = createAmp(ampModelId);
+      ampRef.current = amp;
+      setAmpParams({ ...amp.params });
+    }
+
+    console.log('Building Chain with Amp:', ampRef.current?.modelId);
     buildSignalChain(effects, ampRef.current, cabEnabled ? cabRef.current : null);
   }, [effects, isConnected, ampModelId, cabType, micPos, ampChannel, cabEnabled]);
 
   const handleConnect = useCallback(async () => {
+    // Init audio engine FIRST (creates AudioContext after user gesture)
     await initAudioEngine();
-    const success = await connectInput();
-    if (success) setIsConnected(true);
-  }, [effects]);
+
+    // Now create effects with real audio nodes (AudioContext exists and is allowed)
+    setEffects(prev => {
+      return EFFECT_TYPES.map((type, index) => {
+        // Check if we already have a real audio node for this effect
+        const existing = prev.find(fx => fx.typeId === type.id && fx.node);
+        if (existing) return existing;
+
+        const effect = type.create();
+        const prevFx = prev.find(fx => fx.typeId === type.id);
+        return {
+          id: `${type.id}_${index}`,
+          typeId: type.id,
+          effect,
+          enabled: prevFx ? prevFx.enabled : false,
+          node: effect.node,
+          outputNode: effect.outputNode
+        };
+      });
+    });
+
+    // Create amp and cabinet with real audio nodes
+    if (!ampRef.current) {
+      const amp = createAmp(ampModelId);
+      ampRef.current = amp;
+      setAmpParams({ ...amp.params });
+    }
+    if (!cabRef.current) {
+      const cab = createCabinet(cabType, micPos, cabMix);
+      cabRef.current = cab;
+    }
+
+    const success = await connectInput(selectedDeviceId);
+    if (success) {
+      setIsConnected(true);
+      // Fetch devices now that we have permission
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices.filter(d => d.kind === 'audioinput');
+      const audioOutputs = devices.filter(d => d.kind === 'audiooutput');
+      setInputDevices(audioInputs);
+      setOutputDevices(audioOutputs);
+    }
+  }, [selectedDeviceId, ampModelId, cabType, micPos, cabMix]);
 
   const handleDisconnect = useCallback(() => {
     disconnectInput();
@@ -132,6 +153,19 @@ function App() {
   const handleVolume = useCallback((val) => {
     setMasterVol(val);
     setMasterVolume(val / 100);
+  }, []);
+
+  const handleInputGain = useCallback((val) => {
+    setInputGainState(val);
+    setInputVolume(val / 100);
+  }, []);
+
+  const handleBypassToggle = useCallback(() => {
+    setBypass(prev => {
+      const newState = !prev;
+      setGlobalBypass(newState);
+      return newState;
+    });
   }, []);
 
   const handleToggleEffect = useCallback((id) => {
@@ -382,7 +416,7 @@ function App() {
       />
     );
     if (selectedBlockId === 'input') return <div style={{ color: 'white', textAlign: 'center' }}><h3>INPUT / GATE</h3><p>Global Input Settings</p></div>;
-    if (selectedBlockId === 'output') return <div style={{ color: 'white', textAlign: 'center' }}><h3>MASTER OUTPUT</h3><VUMeter analyser={getOutputAnalyser()} label="OUT" color="#4488ff" /></div>;
+    if (selectedBlockId === 'output') return <div style={{ color: 'white', textAlign: 'center' }}><h3>MASTER OUTPUT</h3><p>Output Visualization Unavailable</p></div>;
 
     const effect = effects.find(fx => fx.id === selectedBlockId);
     if (effect) {
@@ -426,12 +460,133 @@ function App() {
   // Render
   return (
     <div className="app-editor-container">
+
+
       {/* HEADER */}
       <header className="editor-header">
         <div className="header-logo">
           <h1>JAGAT<span>FX</span> <span className="logo-subtitle">by Wisnu Wardana</span></h1>
         </div>
         <div className="header-controls">
+          <div className="status-indicators" style={{ display: 'flex', gap: '8px', marginRight: '15px' }}>
+            <div
+              title="Input Status"
+              style={{
+                width: '10px',
+                height: '10px',
+                borderRadius: '50%',
+                backgroundColor: isConnected ? '#00ff88' : '#333',
+                boxShadow: isConnected ? '0 0 5px #00ff88' : 'none'
+              }}
+            />
+
+          </div>
+
+          {/* Device Selector */}
+          {isConnected && inputDevices.length > 0 && (
+            <>
+              <select
+                value={selectedDeviceId}
+                onChange={async (e) => {
+                  const newId = e.target.value;
+                  setSelectedDeviceId(newId);
+                  await disconnectInput();
+                  const success = await connectInput(newId, selectedChannel);
+                  if (success) setIsConnected(true);
+                }}
+                style={{
+                  marginRight: '10px',
+                  padding: '5px',
+                  backgroundColor: '#222',
+                  color: 'white',
+                  border: '1px solid #444',
+                  borderRadius: '4px',
+                  maxWidth: '200px'
+                }}
+              >
+                {inputDevices.map(device => (
+                  <option key={device.deviceId} value={device.deviceId}>
+                    {device.label || `Device ${device.deviceId.slice(0, 5)}...`}
+                  </option>
+                ))}
+              </select>
+
+              {/* Channel Selector */}
+              <select
+                value={selectedChannel}
+                onChange={async (e) => {
+                  const newChannel = e.target.value === 'mix' ? 'mix' : Number(e.target.value);
+                  setSelectedChannel(newChannel);
+                  await disconnectInput();
+                  const success = await connectInput(selectedDeviceId, newChannel);
+                  if (success) setIsConnected(true);
+                }}
+                style={{
+                  marginRight: '10px',
+                  padding: '5px',
+                  backgroundColor: '#222',
+                  color: '#00ff88',
+                  border: '1px solid #444',
+                  borderRadius: '4px',
+                  maxWidth: '120px'
+                }}
+              >
+                <option value="mix">Stereo Mix</option>
+                <option value="0">Input 1 (L)</option>
+                <option value="1">Input 2 (R)</option>
+              </select>
+            </>
+          )}
+
+          {/* Output Selector */}
+          {isConnected && outputDevices.length > 0 && (
+            <select
+              value={selectedOutputId}
+              onChange={async (e) => {
+                const newId = e.target.value;
+                setSelectedOutputId(newId);
+                await setAudioOutputDevice(newId);
+              }}
+              style={{
+                marginRight: '10px',
+                padding: '5px',
+                backgroundColor: '#222',
+                color: '#4488ff', // Blue text for output
+                border: '1px solid #444',
+                borderRadius: '4px',
+                maxWidth: '200px'
+              }}
+            >
+              <option value="">Default Output</option>
+              {outputDevices.map(device => (
+                <option key={device.deviceId} value={device.deviceId}>
+                  {device.label || `Out ${device.deviceId.slice(0, 5)}...`}
+                </option>
+              ))}
+            </select>
+          )}
+
+          <button
+            className={`bypass-btn ${bypass ? 'active' : ''}`}
+            onClick={() => {
+              const newBypass = !bypass;
+              setBypass(newBypass);
+              setGlobalBypass(newBypass);
+            }}
+            style={{
+              backgroundColor: bypass ? '#ffaa00' : '#333',
+              color: bypass ? 'black' : 'white',
+              border: '1px solid #555',
+              padding: '5px 10px',
+              marginRight: '10px',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 'bold'
+            }}
+          >
+            BYPASS
+          </button>
+
           <a
             href="https://www.tiktok.com/@wardana2508?is_from_webapp=1&sender_device=pc"
             target="_blank"
@@ -440,17 +595,45 @@ function App() {
             title="Follow on TikTok"
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-              <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V0h-3.45v13.67a6.43 6.43 0 1 1-6.43-6.42 6.43 6.43 0 0 1 1 .09v3.45a3 3 0 1 0 1.93 2.87V0h3.48a4.81 4.81 0 0 0 \
-              1.25-.17 7.79 7.79 0 0 1 3.74 1.96V5.7a4.39 4.39 0 0 0-1.2 1z"/>
+              <path d="M12.53.02C13.84 0 15.14.01 16.44 0c.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z" />
             </svg>
           </a>
+          <button
+            className={`test-tone-btn ${isTestToneActive ? 'active' : ''}`}
+            onClick={() => {
+              const newState = !isTestToneActive;
+              setIsTestToneActive(newState);
+              toggleTestTone(newState);
+            }}
+            style={{
+              backgroundColor: isTestToneActive ? '#ff4444' : '#333',
+              color: 'white',
+              border: '1px solid #555',
+              padding: '5px 10px',
+              marginRight: '10px',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            TEST TONE
+          </button>
           <button className={`tuner-btn ${showTuner ? 'active' : ''}`} onClick={() => setShowTuner(true)}>
             TUNER
           </button>
-          <div className="bpm-display">120 BPM</div>
-          <button className={`connect-btn ${isConnected ? 'connected' : ''}`} onClick={isConnected ? handleDisconnect : handleConnect}>
-            {isConnected ? 'LINKED' : 'CONNECT'}
-          </button>
+
+          <InputControls
+            isConnected={isConnected}
+            masterVolume={masterVol}
+            inputGain={inputGain}
+            globalBypass={bypass}
+            inputAnalyser={getInputAnalyser()}
+            outputAnalyser={getOutputAnalyser()}
+            onConnect={handleConnect}
+            onDisconnect={handleDisconnect}
+            onVolumeChange={handleVolume}
+            onInputGainChange={handleInputGain}
+            onBypassToggle={handleBypassToggle}
+          />
         </div>
       </header>
 
@@ -546,6 +729,9 @@ function App() {
                 }
                 handleToggleEffect(id);
               }}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
             />
           </div>
         </div>

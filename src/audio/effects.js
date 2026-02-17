@@ -50,7 +50,9 @@ export function createDistortion(params = {}) {
     const tone = params.tone ?? currentModel.toneFreq;
     const mix = params.mix ?? 80;
 
-    preGain.gain.value = gain / 10;
+    // Fix: Boost pedal gain significantly.
+    // Old: gain / 10. New: gain * 0.5 (max 50x)
+    preGain.gain.value = 1 + (gain * 0.5);
     updateCurve(currentModel, gain);
     waveshaper.oversample = '4x';
 
@@ -70,7 +72,8 @@ export function createDistortion(params = {}) {
     dryGain.connect(output);
 
     function updateCurve(model, gainVal) {
-        const amount = gainVal * model.gainMult;
+        // Adjust amount because input is now much hotter
+        const amount = (gainVal * model.gainMult) / 5;
         switch (model.type) {
             case 'hard': waveshaper.curve = makeHardClipCurve(amount); break;
             case 'fuzz': waveshaper.curve = makeFuzzCurve(amount); break;
@@ -106,7 +109,7 @@ export function createDistortion(params = {}) {
                 updateCurve(currentModel, this.params.gain.value);
             }
             if (p.gain !== undefined) {
-                preGain.gain.setTargetAtTime(p.gain / 10, ctx.currentTime, 0.01);
+                preGain.gain.setTargetAtTime(1 + (p.gain * 0.5), ctx.currentTime, 0.01);
                 updateCurve(currentModel, p.gain);
                 this.params.gain.value = p.gain;
             }

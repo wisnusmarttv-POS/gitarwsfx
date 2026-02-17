@@ -1389,3 +1389,68 @@ body {
   border-color: var(--accent-blue);
   background-color: #000;
 }
+
+/* INPUT CONTROLS (Header) */
+.input-controls {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 5px 15px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.input-section,
+.master-section,
+.output-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.master-section {
+  padding-left: 15px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  padding-right: 15px;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.volume-control {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.volume-label {
+  font-size: 10px;
+  color: #aaa;
+  font-weight: 600;
+}
+
+.volume-value {
+  font-size: 10px;
+  color: #fff;
+  font-family: var(--font-mono);
+}
+
+.master-slider {
+  width: 100px;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #444;
+  outline: none;
+  border-radius: 2px;
+}
+
+.master-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--accent-blue);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+}

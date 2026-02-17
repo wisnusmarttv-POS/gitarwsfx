@@ -3,12 +3,14 @@ import VUMeter from './VUMeter.jsx';
 export default function InputControls({
     isConnected,
     masterVolume,
+    inputGain,
     globalBypass,
     inputAnalyser,
     outputAnalyser,
     onConnect,
     onDisconnect,
     onVolumeChange,
+    onInputGainChange,
     onBypassToggle
 }) {
     return (
@@ -20,6 +22,21 @@ export default function InputControls({
                 >
                     {isConnected ? '🔌 Connected' : '🎸 Connect Guitar'}
                 </button>
+
+                {isConnected && (
+                    <div className="input-level-control" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '0 10px' }}>
+                        <label style={{ fontSize: '10px', marginBottom: '2px' }}>INPUT LEVEL</label>
+                        <input
+                            type="range"
+                            min="0"
+                            max="200"
+                            value={inputGain}
+                            onChange={(e) => onInputGainChange(Number(e.target.value))}
+                            style={{ width: '80px', accentColor: '#00ff88' }}
+                        />
+                        <span style={{ fontSize: '10px' }}>{inputGain}%</span>
+                    </div>
+                )}
 
                 {isConnected && (
                     <VUMeter analyser={inputAnalyser} label="IN" color="#00ff88" />

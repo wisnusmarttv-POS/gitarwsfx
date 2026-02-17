@@ -110,13 +110,13 @@ function makeAmpCurve(amount, model) {
                 break;
             case 'marshall_jcm800': {
                 // Harder clipping with more harmonics
-                const k = amount / 15;
+                const k = amount / 3; // Increased sensitivity (was / 15)
                 curve[i] = Math.sign(x) * (1 - Math.exp(-Math.abs(x * k)));
                 break;
             }
             case 'peavey_6505': {
                 // Very aggressive, tight clipping
-                const drive = amount / 12;
+                const drive = amount / 2.5; // Increased sensitivity (was / 12)
                 curve[i] = Math.tanh(x * drive) * 0.8 +
                     0.2 * Math.sign(x) * Math.pow(Math.abs(Math.tanh(x * drive)), 0.5);
                 break;
@@ -134,13 +134,15 @@ function makeAmpCurve(amount, model) {
                 break;
             case 'mesa_rectifier': {
                 // Heavy, thick saturation with lots of gain
-                const gr = amount / 10;
+                // Adjusted for new gain staging: expecting input 0.5 - 5.0 after preGain
+                // amount is 0-100.
+                const gr = amount / 2; // Increased sensitivity (was / 10)
                 curve[i] = Math.tanh(x * gr) * 0.7 +
                     0.3 * Math.sign(x) * (1 - Math.exp(-Math.abs(x * gr * 2)));
                 break;
             }
             default:
-                curve[i] = Math.tanh(x * (amount / 20));
+                curve[i] = Math.tanh(x * (amount / 5)); // More sensitive default
         }
     }
     return curve;
@@ -157,7 +159,11 @@ export function createAmp(modelId = 'marshall_jcm800', params = {}) {
     // Pre-gain
     const preGain = ctx.createGain();
     const gain = params.gain ?? model.defaults.gain;
-    preGain.gain.value = gain / 50;
+
+    // Fix: Boost gain significantly. 
+    // Old: gain / 50 (max 2x). New: gain * 0.3 (max 30x) - Reduced from 1.0 to tame noise
+    // Actually, let's make it simpler: map 0-100 to 0-30x gain
+    preGain.gain.value = 1 + (gain * 0.3); // 1x to 31x gain
 
     // Waveshaper for amp distortion character
     const waveshaper = ctx.createWaveShaper();
@@ -189,7 +195,8 @@ export function createAmp(modelId = 'marshall_jcm800', params = {}) {
 
     // Master volume
     const masterGain = ctx.createGain();
-    masterGain.gain.value = (params.master ?? model.defaults.master) / 100;
+    // Reduce master gain to compensate for high pre-gain (0.1 to 1.0 range usually effective)
+    masterGain.gain.value = (params.master ?? model.defaults.master) / 300; // Was / 100
 
     // Signal chain
     input.connect(preGain);
@@ -216,7 +223,8 @@ export function createAmp(modelId = 'marshall_jcm800', params = {}) {
         },
         update(p) {
             if (p.gain !== undefined) {
-                preGain.gain.setTargetAtTime(p.gain / 50, ctx.currentTime, 0.01);
+                // Update pre-gain with new scaling
+                preGain.gain.setTargetAtTime(1 + (p.gain * 0.3), ctx.currentTime, 0.01);
                 waveshaper.curve = makeAmpCurve(p.gain, modelId);
                 this.params.gain.value = p.gain;
             }
@@ -237,7 +245,7 @@ export function createAmp(modelId = 'marshall_jcm800', params = {}) {
                 this.params.presence.value = p.presence;
             }
             if (p.master !== undefined) {
-                masterGain.gain.setTargetAtTime(p.master / 100, ctx.currentTime, 0.01);
+                masterGain.gain.setTargetAtTime(p.master / 300, ctx.currentTime, 0.01);
                 this.params.master.value = p.master;
             }
         }

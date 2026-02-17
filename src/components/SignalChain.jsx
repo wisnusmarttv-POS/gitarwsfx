@@ -8,7 +8,10 @@ export default function SignalChain({
     cabinet,
     selectedBlockId,
     onSelectBlock,
-    onToggleBlock
+    onToggleBlock,
+    onDragStart,
+    onDragOver,
+    onDrop
 }) {
     // Helper to get color for a block type
     const getBlockColor = (typeId) => {
@@ -39,7 +42,7 @@ export default function SignalChain({
         }
     };
 
-    const renderBlock = (id, type, label, isActive, isEnabled, onClick, onDoubleClick) => {
+    const renderBlock = (id, type, label, isActive, isEnabled, onClick, onDoubleClick, draggable = false) => {
         const color = getBlockColor(type);
 
         return (
@@ -49,6 +52,10 @@ export default function SignalChain({
                 onClick={onClick}
                 onDoubleClick={onDoubleClick}
                 style={{ '--block-color': color }}
+                draggable={draggable}
+                onDragStart={(e) => draggable && onDragStart && onDragStart(e, id)}
+                onDragOver={(e) => draggable && onDragOver && onDragOver(e)}
+                onDrop={(e) => draggable && onDrop && onDrop(e, id)}
             >
                 <div className="node-icon-area">
                     <div className="node-icon">
@@ -68,8 +75,8 @@ export default function SignalChain({
     return (
         <div className="signal-chain-strip">
             <div className="chain-scroll-area">
-                {/* Effects Chain */}
-                {effects.map((fx, index) => {
+                {/* Effects Chain (Pre-Cab) */}
+                {effects.filter(fx => fx.typeId !== 'noisegate').map((fx) => {
                     const type = EFFECT_TYPES.find(t => t.id === fx.typeId);
                     return renderBlock(
                         fx.id,
@@ -78,7 +85,8 @@ export default function SignalChain({
                         selectedBlockId === fx.id,
                         fx.enabled,
                         () => onSelectBlock(fx.id),
-                        () => onToggleBlock(fx.id)
+                        () => onToggleBlock(fx.id),
+                        true // draggable
                     );
                 })}
 
@@ -86,15 +94,32 @@ export default function SignalChain({
                 {renderBlock(
                     'amp', 'amp', 'AMP',
                     selectedBlockId === 'amp', true,
-                    () => onSelectBlock('amp'), () => { }
+                    () => onSelectBlock('amp'), () => { },
+                    false
                 )}
 
                 {/* Cab */}
                 {renderBlock(
                     'cab', 'cab', 'CAB',
                     selectedBlockId === 'cab', cabinet.enabled !== undefined ? cabinet.enabled : true,
-                    () => onSelectBlock('cab'), () => onToggleBlock('cab')
+                    () => onSelectBlock('cab'), () => onToggleBlock('cab'),
+                    false
                 )}
+
+                {/* Effects Chain (Post-Cab: Noise Gate) */}
+                {effects.filter(fx => fx.typeId === 'noisegate').map((fx) => {
+                    const type = EFFECT_TYPES.find(t => t.id === fx.typeId);
+                    return renderBlock(
+                        fx.id,
+                        fx.typeId,
+                        (type?.name || fx.typeId).toUpperCase(),
+                        selectedBlockId === fx.id,
+                        fx.enabled,
+                        () => onSelectBlock(fx.id),
+                        () => onToggleBlock(fx.id),
+                        true // draggable
+                    );
+                })}
 
                 {/* VOL/Output (Placeholder for now) */}
                 {renderBlock(
