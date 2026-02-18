@@ -64,11 +64,22 @@ export default function CabinetPanel({ cabinetType, micPosition, mix, enabled = 
                 </div>
 
                 <div className="cabinet-select-group">
-                    <label>Mic</label>
+                    <div className="mic-toggle-header">
+                        <label>Mic</label>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onToggle(); }}
+                            className={`mic-toggle-btn ${enabled ? 'on' : 'off'}`}
+                            title={enabled ? "Disable Mic/Cab Sim" : "Enable Mic/Cab Sim"}
+                        >
+                            {enabled ? 'ON' : 'OFF'}
+                        </button>
+                    </div>
                     <select
                         className="cabinet-selector"
                         value={micPosition}
                         onChange={(e) => onMicChange(e.target.value)}
+                        disabled={!enabled}
+                        style={{ opacity: enabled ? 1 : 0.5 }}
                     >
                         {MIC_POSITIONS.map(m => (
                             <option key={m.id} value={m.id}>{m.name}</option>

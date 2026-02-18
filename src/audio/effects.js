@@ -50,8 +50,8 @@ export function createDistortion(params = {}) {
     const tone = params.tone ?? currentModel.toneFreq;
     const mix = params.mix ?? 80;
 
-    // Pre-gain: map 0-100 to 1x-16x (reduced from 51x to prevent noise amplification)
-    preGain.gain.value = 1 + (gain * 0.15);
+    // Pre-gain: map 0-100 to 1x-46x (Boosted from 16x for more saturation)
+    preGain.gain.value = 1 + (gain * 0.45);
     updateCurve(currentModel, gain);
     waveshaper.oversample = '4x';
 
@@ -108,7 +108,7 @@ export function createDistortion(params = {}) {
                 updateCurve(currentModel, this.params.gain.value);
             }
             if (p.gain !== undefined) {
-                preGain.gain.setTargetAtTime(1 + (p.gain * 0.15), ctx.currentTime, 0.01);
+                preGain.gain.setTargetAtTime(1 + (p.gain * 0.45), ctx.currentTime, 0.01);
                 updateCurve(currentModel, p.gain);
                 this.params.gain.value = p.gain;
             }
@@ -698,40 +698,56 @@ export function createNoiseGate(params = {}) {
     const input = ctx.createGain();
     const output = ctx.createGain();
     const gate = ctx.createGain();
-    const analyser = ctx.createAnalyser();
 
-    const threshold = params.threshold ?? -65; // Lowered from -40 to prevent cutting
+    // Side-chain processing
+    // Use ScriptProcessor for real-time amplitude detection (more stable than visual analyser)
+    // Buffer size 512 = ~11ms latency @ 44.1kHz, good trade-off
+    const scriptNode = ctx.createScriptProcessor(512, 1, 1);
+    const silencer = ctx.createGain();
+    silencer.gain.value = 0; // Mute the processing text signal
 
-    analyser.fftSize = 256;
-    gate.gain.value = 1;
+    const threshold = params.threshold ?? -65;
 
-    input.connect(analyser);
+    gate.gain.value = 0; // Start closed
+
+    // Audio Path: Input -> Gate -> Output
     input.connect(gate);
     gate.connect(output);
 
-    let animFrame;
-    const dataArray = new Float32Array(analyser.fftSize);
+    // Detection Path: Input -> ScriptNode -> Silencer -> Destination (to keep clock running)
+    input.connect(scriptNode);
+    scriptNode.connect(silencer);
+    silencer.connect(ctx.destination);
 
-    function processGate() {
-        analyser.getFloatTimeDomainData(dataArray);
-        let rms = 0;
-        for (let i = 0; i < dataArray.length; i++) rms += dataArray[i] ** 2;
-        rms = 10 * Math.log10(rms / dataArray.length);
+    scriptNode.onaudioprocess = function (audioProcessingEvent) {
+        const inputBuffer = audioProcessingEvent.inputBuffer;
+        const inputData = inputBuffer.getChannelData(0);
+        let sum = 0;
+
+        // Calculate RMS
+        for (let i = 0; i < inputData.length; i++) {
+            sum += inputData[i] * inputData[i];
+        }
+
+        // Prevent -Infinity
+        const rms = Math.sqrt(sum / inputData.length);
+        const db = rms > 0.00001 ? 20 * Math.log10(rms) : -100;
 
         const currentThreshold = params._currentThreshold ?? threshold;
 
-        // Improved Enveloping: Fast Attack, Slow Release
-        if (rms > currentThreshold) {
-            // Open fast (10ms) to catch transients
-            gate.gain.setTargetAtTime(1, ctx.currentTime, 0.01);
+        // Fast Attack, Medium Release
+        if (db > currentThreshold) {
+            // Open very fast (2ms) to catch pick attack
+            gate.gain.setTargetAtTime(1, ctx.currentTime, 0.002);
         } else {
-            // Close slow (100ms) to sustain tails and avoid chopping
-            gate.gain.setTargetAtTime(0, ctx.currentTime, 0.1);
+            // Sustain / Decay
+            gate.gain.setTargetAtTime(0, ctx.currentTime, 0.1); // 100ms release
         }
 
-        animFrame = requestAnimationFrame(processGate);
-    }
-    processGate();
+        // Silence output of script node just in case
+        const outputData = audioProcessingEvent.outputBuffer.getChannelData(0);
+        outputData.fill(0);
+    };
 
     return {
         node: input,
@@ -739,7 +755,7 @@ export function createNoiseGate(params = {}) {
         name: 'Noise Gate',
         color: '#32CD32',
         params: {
-            threshold: { value: threshold, min: -80, max: 0, label: 'Thresh' }
+            threshold: { value: threshold, min: -80, max: 0, label: 'Thresh' } // Range -80 to 0
         },
         update(p) {
             if (p.threshold !== undefined) {
@@ -748,7 +764,11 @@ export function createNoiseGate(params = {}) {
             }
         },
         destroy() {
-            cancelAnimationFrame(animFrame);
+            if (scriptNode) {
+                scriptNode.disconnect();
+                scriptNode.onaudioprocess = null;
+            }
+            if (silencer) silencer.disconnect();
         }
     };
 }

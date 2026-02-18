@@ -19,53 +19,53 @@ function generateCabinetIR(ctx, cabinetId, micPosition) {
     const sampleRate = ctx.sampleRate;
     let irLength, decay, lowCut, highCut, resonance, roomSize;
 
-    // Cabinet character
+    // Cabinet character - Reduced lengths to prevent "slapback" delay feel
     switch (cabinetId) {
         case '1x12':
-            irLength = 0.15;
+            irLength = 0.04; // 40ms
             decay = 2.5;
             lowCut = 150;
             highCut = 6000;
             resonance = 1.2;
-            roomSize = 0.3;
+            roomSize = 0.1;
             break;
         case '2x12':
-            irLength = 0.2;
+            irLength = 0.05; // 50ms
             decay = 3.0;
             lowCut = 100;
             highCut = 5500;
             resonance = 1.5;
-            roomSize = 0.4;
+            roomSize = 0.15;
             break;
         case '4x12_closed':
-            irLength = 0.25;
+            irLength = 0.06; // 60ms - Tighter
             decay = 3.5;
             lowCut = 80;
             highCut = 5000;
             resonance = 2.0;
-            roomSize = 0.5;
+            roomSize = 0.2;
             break;
         case '4x12_open':
-            irLength = 0.3;
+            irLength = 0.06;
             decay = 3.0;
             lowCut = 90;
             highCut = 5500;
             resonance = 1.8;
-            roomSize = 0.6;
+            roomSize = 0.25;
             break;
         default:
-            irLength = 0.2;
+            irLength = 0.05;
             decay = 3.0;
             lowCut = 100;
             highCut = 5500;
             resonance = 1.5;
-            roomSize = 0.4;
+            roomSize = 0.15;
     }
 
     // Mic position adjustments
     switch (micPosition) {
         case 'close':
-            irLength *= 0.5;
+            irLength *= 0.8;
             highCut *= 1.2;
             resonance *= 1.3;
             break;
@@ -102,13 +102,7 @@ function generateCabinetIR(ctx, cabinetId, micPosition) {
             sample += Math.sin(2 * Math.PI * 120 * t) *
                 Math.exp(-t * 15) * 0.2;
 
-            // Room reflections
-            if (roomSize > 0.3) {
-                const reflectionDelay = Math.floor(sampleRate * roomSize * 0.01);
-                if (i > reflectionDelay) {
-                    sample += data[i - reflectionDelay] * 0.15;
-                }
-            }
+            // REMOVED: Manual discrete echo (room reflection) which caused "delay" effect
 
             // Stereo widening
             if (channel === 1) {

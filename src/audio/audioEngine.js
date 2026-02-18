@@ -28,7 +28,7 @@ let inputGateThreshold = -70; // dB threshold - lowered further to prevent cutti
 
 export function getAudioContext() {
   if (!audioContext) {
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    audioContext = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
   }
   return audioContext;
 }

@@ -156,10 +156,21 @@ export function createAmp(modelId = 'marshall_jcm800', params = {}) {
 
     // Pre-gain
     const preGain = ctx.createGain();
+    // Tightness filter (Tube Screamer style low cut before distortion)
+    const tightFilter = ctx.createBiquadFilter();
+    tightFilter.type = 'highpass';
+    tightFilter.frequency.value = 250; // Classic tightening freq
+    tightFilter.Q.value = 0.7;
+
     const gain = params.gain ?? model.defaults.gain;
 
-    // Pre-gain: map 0-100 to 1x-26x gain (restored from 0.08 for better distortion)
-    preGain.gain.value = 1 + (gain * 0.25);
+    // Gain Staging per Category
+    let gainMult = 0.20; // Default crunch
+    if (model.category === 'clean') gainMult = 0.05; // Low gain for headroom
+    else if (model.category === 'highgain') gainMult = 0.60; // Extreme gain for metal
+
+    // Pre-gain: map 0-100 to appropriate gain level
+    preGain.gain.value = 1 + (gain * gainMult);
 
     // Waveshaper for amp distortion character
     const waveshaper = ctx.createWaveShaper();
@@ -189,9 +200,11 @@ export function createAmp(modelId = 'marshall_jcm800', params = {}) {
     presenceFilter.frequency.value = 5000;
     presenceFilter.gain.value = ((params.presence ?? model.defaults.presence) - 5) * 2;
 
-    // Master volume - relaxed attenuation to restore volume
+    // Master volume - adjusted for consistency
     const masterGain = ctx.createGain();
-    masterGain.gain.value = (params.master ?? model.defaults.master) / 80;
+    // Clean amps need more volume because they have less compression/gain
+    const masterMult = model.category === 'clean' ? 1.5 : 0.8;
+    masterGain.gain.value = (params.master ?? model.defaults.master) / 80 * masterMult;
 
     // Output limiter to prevent clipping
     const limiter = ctx.createDynamicsCompressor();
@@ -202,7 +215,14 @@ export function createAmp(modelId = 'marshall_jcm800', params = {}) {
     limiter.release.value = 0.05;
 
     // Signal chain
-    input.connect(preGain);
+    input.connect(tightFilter);
+
+    // Bypass tight filter for clean/crunch amps to keep body
+    if (model.category === 'clean' || model.category === 'crunch') {
+        tightFilter.frequency.value = 60; // Just rumble filter
+    }
+
+    tightFilter.connect(preGain);
     preGain.connect(waveshaper);
     waveshaper.connect(bassFilter);
     bassFilter.connect(midFilter);
@@ -227,8 +247,8 @@ export function createAmp(modelId = 'marshall_jcm800', params = {}) {
         },
         update(p) {
             if (p.gain !== undefined) {
-                // Update pre-gain with reduced scaling
-                preGain.gain.setTargetAtTime(1 + (p.gain * 0.08), ctx.currentTime, 0.01);
+                // Update pre-gain with category scaling
+                preGain.gain.setTargetAtTime(1 + (p.gain * gainMult), ctx.currentTime, 0.01);
                 waveshaper.curve = makeAmpCurve(p.gain, modelId);
                 this.params.gain.value = p.gain;
             }

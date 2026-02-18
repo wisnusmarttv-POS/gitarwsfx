@@ -4,7 +4,7 @@ export const FACTORY_PRESETS = [
         id: 'clean',
         name: '✨ Clean',
         description: 'Crystal clear clean tone',
-        amp: { model: 'fender_twin', params: { gain: 25, bass: 5, mid: 5, treble: 6, presence: 5, master: 75 } },
+        amp: { model: 'fender_twin', params: { gain: 40, bass: 5, mid: 5, treble: 6, presence: 5, master: 75 } },
         cabinet: { type: '1x12', mic: 'close', mix: 85 },
         effects: [
             { type: 'compressor', enabled: true, params: { threshold: -20, ratio: 3, attack: 5, release: 200 } },
@@ -16,7 +16,7 @@ export const FACTORY_PRESETS = [
         id: 'blues',
         name: '🎵 Blues',
         description: 'Warm bluesy crunch',
-        amp: { model: 'vox_ac30', params: { gain: 55, bass: 6, mid: 7, treble: 6, presence: 5, master: 65 } },
+        amp: { model: 'vox_ac30', params: { gain: 30, bass: 6, mid: 7, treble: 6, presence: 5, master: 65 } },
         cabinet: { type: '2x12', mic: 'close', mix: 90 },
         effects: [
             { type: 'compressor', enabled: true, params: { threshold: -18, ratio: 3, attack: 10, release: 250 } },
@@ -29,7 +29,7 @@ export const FACTORY_PRESETS = [
         id: 'rock',
         name: '🤘 Rock',
         description: 'Classic rock crunch',
-        amp: { model: 'marshall_plexi', params: { gain: 65, bass: 6, mid: 8, treble: 7, presence: 6, master: 70 } },
+        amp: { model: 'marshall_plexi', params: { gain: 40, bass: 6, mid: 8, treble: 7, presence: 6, master: 70 } },
         cabinet: { type: '4x12_closed', mic: 'close', mix: 95 },
         effects: [
             { type: 'compressor', enabled: true, params: { threshold: -15, ratio: 4, attack: 5, release: 200 } },
@@ -42,7 +42,7 @@ export const FACTORY_PRESETS = [
         id: 'metal',
         name: '💀 Metal',
         description: 'Brutal high gain',
-        amp: { model: 'peavey_6505', params: { gain: 85, bass: 7, mid: 4, treble: 7, presence: 6, master: 55 } },
+        amp: { model: 'peavey_6505', params: { gain: 65, bass: 7, mid: 4, treble: 7, presence: 6, master: 60 } },
         cabinet: { type: '4x12_closed', mic: 'close', mix: 100 },
         effects: [
             { type: 'noisegate', enabled: true, params: { threshold: -35 } },
